@@ -1,0 +1,175 @@
+\chapter{Evaluation}
+
+\qq{A real leader faces the music, even if he doesn't like the tune.}{Anon}
+
+\section{Requirements analysis}
+
+The purpose of this section is to review the requirements (page \pageref{reqs}) and see if they have been met.
+
+\subsection{Composition}
+
+The system accepts a user-supplied chord progression and generates a jazz improvisation with a walking bass line and percussion accompaniment. The output can be converted to MIDI or Lilypond, or played in real time via a MIDI device.
+
+The genetic algorithm produces music at a reasonable speed: a 64 population, 2,000 iteration, eight-bar solo can be produced in 30 seconds on a medium-spec laptop. This both vindicates the use of Java over Python, and leaves lots of computational room for further extensions to the system.
+
+The output is supposed to satisfy the three constraints of \cite{grachten01}: tonality, continuity and structure. Tonality is heavily enforced via the FmKey module, yielding music that is 90\% scale notes (Figure \ref{fig-modules1}, page \pageref{fig-modules1}). The FmChord module encourages chord notes which are by definition highly consonant.
+
+Continuity is the domain of FmExpectancy. The proximity check prevents large intervals from frequently occurring, and in general registral direction is not reversed: exactly Grachten's requirements. The melodic contour is further improved by FmScale, which encourages single-semitone scale runs, and the registral return check, which cultivates a tonal centre.
+
+Structure is primarily created via repetition. FmRepetition creates exact or near-exact copies of notes within a block; history seeding reprises old blocks, often in transposed form. The simple restatement, in whole or in part, of a previously played bar instantly creates the effect of ``thematic development'' \citep{biles94}. FmRhythm also creates a smooth, consistent rhythm; this rhythmic repetition makes notes seem more related due to their position in the rhythm.
+
+\subsection{Genetic algorithm}
+
+The GA can be seeded with a selection of generators, including uniform random, 1/f and chaotic. Previous blocks are also used as seeds, with or without transposition to account for key changes. The modules specified have been implemented: FmKey, FmExpectancy2, FmRhythm, FmRepetition2, FmRange. Melodic contour is measured by expectancy. Additionally, FmScales, FmNumNotes, FmChord  and FmRhythmRep have been produced and used in experimentation.
+
+A small change has been made: modules can choose to evaluate the current block only, or evaluate the current block and the last $n$ blocks combined. This reduces the chance of bugs resulting from each module doing block manipulation independently.
+
+The fitness functions utilise a many-to-one chord/scale mapping which supports all listed chords, but does not allow arbitrary extensions; this has so far been sufficient. Only tournament selection was implemented, but it is a flexible and fast selection algorithm and has been satisfactory.
+
+All crossover methods were implemented, but double-point was ultimately used because it is not as destructive as the more exploratory uniform crossover. Similarly, all mutations were coded, but at present only the random pitch shift method is in use.
+
+\subsection{Post-pass}
+
+Velocity and tempo ``curves'' were not applied due to lack of time. However, velocity is changed via a simple random-walk algorithm that has had good results. Notes were given a small, random offset plus a duration multiplier based on swing rhythm, to augment the jazz feel. Finally, note durations were extended to fill any subsequent rests. The sum of these efforts make the output sound more natural.
+
+\subsection{Accompaniment}
+
+The chords are played with a simple voice leading algorithm that keeps the ``player's left hand'' in roughly the same position. The percussion is a static drum loop, while the bass line plays a random walk over the chord notes, echoing the root note of a chord whenever one is played. These efforts create an enjoyable harmonic and rhythm context without adding complexity to the GA.
+
+\subsection{User interface}
+
+The user interface implements virtually all of the requirements, except for the ability to modify meter. Users can modify all generation parameters, save and load options to file, and sensible defaults are provided. Each fitness, crossover and initialisation module has its own UI options which are dynamically displayed on the screen when the module is selected.
+
+\section{Future development}
+
+One advantage of an algorithmic composition project is its open-ended scope; from the simple foundation of a genetic algorithm or stochastic system, ``layers'' of functionality can be added to provide higher-level form and aesthetics, or expand the scope of the algorithm to cover more musical styles or situations. Similarly, \jg\ could be expanded in a number of ways if time had allowed.
+
+\subsection{Cultural algorithms}
+
+Cultural algorithms (CAs), introduced by \cite{reynolds94} and detailed in \citep{reynolds94int}, introduce a second inheritance path via the \emph{belief space}. The belief space contains knowledge that ``guides'' members of the population towards the optimal solution(s) of the fitness function, by noting the ranges of values, sequences and positions of values, etc. that lead to higher fitness scores. Higher-fitness candidates \emph{influence} the belief space, and in turn, the belief space influences all evolving members of the population.
+
+In \jg, the addition of a belief space component would allow some of the fitness function modules to be removed, as the belief space codifies their constraints and rules more succinctly. In addition, it should speed up convergence to a high-fitness population as the algorithm remembers what worked well last time, and repeats it. There are, however, several problems: if the belief space is persistent between executions, the high-fitness attributes may be too specific and lead to output that sounds too similar to previous outputs; in any case, the belief space may influence the population too much and lead to less interesting music. Evidently, experimentation would be required to see if CAs would increase the quality of \jg's improvisations.
+
+\subsubsection{Subjective fitness function}
+
+One advantage to using cultural algorithms is that they provide a mechanism for storing the fitness influence of temporal data, i.e.\ sequences of notes, rhythms and note ranges at a specific point in the solo. A simple facility could be added to track key presses of `g' or 'b' \citep[for ``good'' or ``bad'', as used by][]{biles94} and increase or decrease the fitness influence score for various metrics based on the currently-playing section of music. The updated belief space would then influence evolving populations of subsequent blocks, to encourage or discourage elements that the user has commented on. This allows subjective input without the infamous ``fitness bottleneck'' problem, as the objective fitness functions perform most of the work.
+
+\subsection{Chords and scales}
+
+The current chord progression system contains a small number of built-in chords, and a many-to-one map of chords to scales. While this is sufficient for testing,
+it is not general enough to cover many compositions. A more developed system might support explicit inversions, such as \tt{C7/E}, or explicit scale choices, such as \tt{F7\#9(Blues)}. The user could define additional chords as a list of intervals, or simply enter note groupings into the chord progression field, e.g.\ \verb!{F, F#, A, C}!. Built-in chords could be modified to support an arbitrary combination of augmented, diminished, sharped, flatted, removed or added notes.
+
+To support these enhancements, the \tt{FmKey} module would be changed to make scale choices that coincide with the last block, or could reasonably used with the next block. This would mimic a real improviser's style of playing a single scale or mode over multiple chords, as playing a different scale/mode for each chord is quite difficult in practice. To cope with non-standard chords, ``reasonable'' scales would be defined as those sharing the most notes with the chord, or having a dissonance distribution that is similar to the scale's distribution for other chords.
+
+It may also be useful to investigate generating chord progressions from scratch. Tables of common chord choices to succeed other chords are easily acquired and could be used for stochastic generation. A key concept in this generation would be the creation of \emph{tension and release}, where certain chords (or their alterations and extensions) are used to build up dissonance that fades into consonance over time. A chief example of this is the famous ii--V--I progression.
+
+\subsection{Accompaniment}
+
+Improving both bass and drums would be a quick way to increase the quality of the output without modifying the main genetic algorithm. The current accompaniment is a simple walking bass line and fixed percussion pattern; in a complete system, these instruments would need to play more intelligent parts to fully simulate a ``jam'' atmosphere.
+
+The bass line could be generated with a more complex algorithm, such a Markov chain \citep{mcalpine99} or another genetic algorithm. The bass would have additional constraints: its range would be more limited (due to the instrument), it would play slower to mimic the most common playing style, and some kind of harmony with the improvisation and chords would be necessary. The percussion could be generated via a grammar \citep{mccormack96} as it is mostly composed of predefined patterns. The dynamics and rhythm of the improvisation and the placement of chords in the progression could be used as triggers for more sophisticated patterns, such as fills or syncopation. The overall effect is to augment the structure and rhythm of the solo with percussive harmony, much like a trombone.
+
+It would be useful to explore time offsets in accompaniment; both bassists and drummers often play ``ahead of the beat'' by an almost imperceptible amount to ``push the song forward'' \citep{sabatella95}. It is also possible that further instruments could be explored, such as a solo saxophone or full horn section.
+
+\subsection{Stored ``licks''}
+
+It would be useful to mix certain ``clich\'{e}'' phrases, or ``licks'', into the improvisation; figure \ref{fig-dorianlicks} shows some typical ``licks'' that would be played over the Dorian scale.
+
+\fig{dorianlicks}{Typical ``licks'' for D Dorian}{Typical phrases to play over a D Dorian scale, e.g.\ Dm7--G7 chord progression.}
+
+Licks could be introduced as part of a mutation, to both expand the search space and make dull passages more interesting. The lick would overwrite part of the musical phrase; there may be a simple test that the melodic contour remains smooth, but any harmonic or rhythmic incongruities will be detected by the fitness function. The \jg\ block size is currently set to two bars, which is thankfully just enough to cover the most common patterns.
+
+\subsection{Form and structure}
+
+\jg\ is current designed for 4--8 bar solos and it shows. The block repetition of \jg\ can cause segments of the melody to be restated at several points of the solo. This fools the user into thinking there is a ``theme'' to the solo, but the reality is much more mundane.  Variation is high and the melody seems to be purposeful, but extend beyond eight bars and the melody will eventually sound meandering as it has no higher-level structure. Similarly, ``traits'' of the genetic algorithm configuration will begin to become apparent through the regularity of the output, and the sound risks becoming stale.
+
+Motifs, or short themes are often concocted by jazz players and restated several times during a solo. The system could attempt to generate (or find from history) a set of enjoyable themes, then arrange and restate them for maximum impact. Themes could even be mutated or transposed as long as they are continually re-introduced. This would add a sense of structure and purpose to the piece, while also ``resetting'' the melody line when themes are reprised, to prevent wandering. However, finding high-fitness melodic fragments is difficult and might require a per-note fitness function.
+
+Another variation technique was used with FmScales in section \ref{test-scales} (page \pageref{test-scales}). By adjusting the fitness function weights anew for each block, the solo is generated with slightly different parameters throughout. This prevents exact repetition as the exact copies no longer fit the changed fitness landscape, and must mutate to survive. Similarly, the aesthetics of the solo will be different for each pair of bars, and ultimately different for each output, so they will rarely sound stale. Code was added to handle these systems, but the user interface and experimentation will have to be handled later.
+
+Finally, the ending cadence would be replaced with fitness function modules that encourage a real ending to the solo (e.g.\ fewer notes, return to root note).
+
+\subsection{Emotion}
+
+Although the solos of \jg\ sometimes appear to have a theme or purpose, no effort was applied to actually giving them one. Research into emotion and music is plentiful and it would be useful to take some of the models for evaluating emotion and place them into the fitness function, for example the early findings of \cite{hevner36,hevner37} or the work by \cite{kim04} on affective music.
+
+\section{Conclusion}
+
+Expectations for the \jg\ project were not high. It has been widely concluded that writing an
+objective fitness function for music is \emph{hard} \citep{papadopoulos98,jin05,unehara03}; the
+chief aim of the project was not to achieve human-equivalent output but rather explore methods
+for reaching that eventual goal.
+
+In this, it is felt that \jg\ has shown that an objective fitness function can produce results that
+generate consonant and acceptable ``riffs'' over chord progressions, combined with a natural-sounding
+rhythm, repetition and restatement [scales2]. The end result is inconsistent (due to the random nature of
+the genetic algorithm) but far better than the author's expectations, and therefore quite promising.
+After seeing how simple rules like stressing chord notes, playing notes on beat positions and 
+repeating transposed melodic fragments have aided the realism of the output, the author is convinced
+that more complicated fitness functions which draw upon higher-level concepts will yield similar
+improvements; the future development section above covers many of the most important.
+
+At the beginning of the project the genetic algorithm was defined as heavily modular, with a 
+user interface that could support the selection of various methods for mutation, fitness evaluation
+etc. each with their own set of options. This was primarily to aid my exploration of the system,
+but is also relevant for extensions: given the small scope of the project, it was decided to design
+\jg\ such that it would be extensible and comprehensive. One can now easily add new fitness modules and
+functionality.
+
+The genetic algorithm is unpredictable and, early on, exploited problems with the fitness function
+to produce completely uninteresting output. It took some effort and refinement to get the output
+to the state where it currently is, and it will take far more effort until the output is of
+truly acceptable quality. While GAs are resilient to bad methodology to some degree -- poor
+initialisers, crossover or mutation -- they are solely guided by the fitness function and it must
+be precise and correct.
+
+With an objective fitness function the problem is how one defines musical knowledge in this form.
+The answer was to sidestep the issue and define only the easily-defined aspects of such knowledge,
+hoping that the genetic algorithm would randomise the rest and that it would sound acceptable.
+This sort of ``guided'' or constrained randomness is key to the GA, and many tricks were added to
+improve the output quality. For example, the velocity curves, swing and
+FmScales modules created pleasing effects. Complex chord progressions emphasise harmony (which \jg\
+does very well) and lessen the pressure to create a good melody. Repetition seems to be
+extremely useful in humanising the piece, especially when used with entire blocks.
+
+Melodic expectancy proved to be an ideal model for improvisation. It is a model which \emph{checks}
+a phrase, rather than declaring what it should be in advance, which makes it ideal for a fitness
+function. Changing the target expectancy between 0\% and 100\% showed drastically different and 
+distinguishable results, and the choice of 75\% proved to be the best balance between innovation
+and conformity. The result is a restrained melodic contour, mostly free of large intervals, that
+sounds pleasing over virtually any chord progression. However, melodic expectancy is a very
+general model, and it could be argued that a jazz improviser should seek to implement more domain-specific
+knowledge. In this \jg\ is still very much undeveloped.
+
+Another note is that GAs turned out to be more exact about following the fitness function than the author
+had realised. For example, the FmKey module awards a score based on the \% of notes in the phrase that
+belong to the correct scale. Rather than allow mutation to create large amounts of dissonance, the score
+for the FmKey module remained locked at 90--95\% consonance in the face of crossover and random pitch
+changes. In general, despite the large number of enabled fitness modules, they all seemed to have a firm
+input on the result as the GA mercilessly discards all but the very fittest candidates with each passing
+generation. This is but one example of the author's inexperience with GAs; one disadvantage to their use
+is that they have so many options and choices, that it is easy to produce bad results with misconfiguration.
+
+The author believes that GAs are a good alternative to a traditional rule-based approach, combining elements
+from stochastic and knowledge-based composition. Modules like FmScales and FmRepetition2 contained checks
+for musical elements that would be hard to explicitly replicate with a rule-based approach. Even the 
+simple FmKey and FmChord models encourage a particular quantity of consonant notes, but do so in a way
+that allows some notes to be dissonant if it fits the purpose of other fitness modules. A simple, non-GA
+approach would likely roll a dice to determine if each note is consonant or dissonant, at the expense
+of other concerns. Constraint-based approaches often use a search algorithm similar to a GA to determine
+answers to complex questions.
+
+Until more effort is spent on the objective fitness function, it is not possible to determine its
+potential compared to a subjective fitness function. Subjective approaches have their own set of 
+problems: the fitness bottleneck, individual tastes and human error. One use for them may be to
+manually check inputs to a subjective fitness function and use that to build models that can be used in
+an objective one. Biles unsuccessfully tried this with a neural network in 1996, but the field is
+far from closed.
+
+To conclude, the vast majority of requirements were implemented, the output is promising and many
+routes for future development have been discussed. There is still a long way to go, but at the very
+least the GA is shown to be a viable method of music composition, and one that can easily improve with more
+domain-specific knowledge. In particular, the techniques of history seeding and melodic expectancy
+modelling have produced agreeable results. To this end, the project is considered a success.
+
+% haven't justified my choice of using fitness "blocks" instead of whole piece.

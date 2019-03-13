@@ -1,0 +1,51 @@
+\chapter{Introduction}
+
+\qq{All musicians are subconsciously mathematicians.}{Thelonious Monk}
+
+\section{Problem description}
+
+Algorithmic composition could be described as ``a sequence of rules for combining musical parts into a whole'' \citep{cope93}. This definition does not constrain one to the use of a computer to perform the
+composition, as evidenced by Mozart's famous Musical Dice Game in 1787; or in 1026, when Guido d'Adrezzo
+proposed a scheme to assign pitches to vowel sounds in religious texts \citep{loy89}. However, the advent of computers
+has brought forth much more powerful techniques for music generation: rule and constraint systems, complex mathematical models, statistical databases, and many others.
+
+This project employs a \emph{genetic algorithm} to generate jazz improvisations over a user-supplied
+chord progression. Such algorithms begin with a \emph{population} of initial subjects (melodic phrases), and slowly
+evolve them towards more suitable phrases until certain criteria are satisfied. Central to this notion is the
+\emph{fitness function}, a function that attempts to numerically quantify the quality of each phrase in the
+population. Conventionally such an assessment is performed by a human, which creates a fitness bottleneck \citep{biles94}
+as humans take seconds, if not minutes to evaluate phrases. This project attempts to devise an \emph{objective},
+mostly deterministic fitness function that relies on a mix of common-sense constraints, and models such as \citeauthor{narmour90}'s
+\emph{Implication-Realization Model} (1990, 1992) for melodic expectancy.
+
+Genetic algorithms suffer from having a large complexity: in addition to the fitness function and its hundreds or thousands of constraints, each stage of evolution (mutation, crossover, selection) can be implemented in a variety of ways, each having a different effect on the final output. This project attempts to solve this dilemma by providing a full user interface, allowing the user to select and experiment with different genetic methods and hear the associated changes in the musical output. The fitness function will be split up into modules that can be enabled or disabled at will, and the results combined via a weighted average. Changing the weighting of these modules will allow even greater control over the final piece.
+
+Finally, regardless of algorithm, such compositions tend to wander and are usually perceived by the listener as aimless and mechanical. This project examines and implements a variety of techniques to combat this by introducing a higher-level structure, and performing a post-pass on the musical output to remove evidence of its mechanical, computer-generated nature. The overall aim is not necessarily to produce human-quality output, but to explore promising approaches to eventually reaching this goal.
+
+\section{Jazz music}
+
+Jazz is a broad genre with divergent musical styles, but most share some central traits: improvisation, swing rhythm\footnote{A rhythm in which the duration of the initial note in a pair is augmented and that of the second is diminished. Usually 8\th\ notes.}, polyrhythms, seventh chords and other complex harmonies that are more dissonant than typical Western music. Jazz is a contradiction: it has a large number of informal rules such as common scales to play over chords, drum and acoustic bass patterns. But these rules are often broken, such as when John Coltrane began playing modal jazz\footnote{Instead of playing over several scales set to a chord progression, modal jazz involves improvising over one musical mode (scale) for the whole song. This allows more freedom of expression, but it is harder for solos to remain interesting without scale changes.}. Jazz
+provides a basic framework for a composition algorithm, without being so strict as to limit the musical possibility space.
+
+Such algorithms can generate music in two main ways: either generate it iteratively, or generate the entire piece at once. The latter tends to involve more long-term, large-scale planning and constraint satisfaction, but it is not a good fit for jazz music. Improvisation, which is key to jazz, models the former process: based on previous notes, output the next note. Variables such as past experience, mood and ability govern the music produced, and planning ahead is not a major factor.
+
+Finally, jazz has always progressed, from its origins in everything from ragtime to Dixieland, to swing, bebop and free jazz. In the spirit of this progression, this project continues to explore musical techniques, in the hope of progressing the state of algorithmic composition techniques as a whole.
+
+\section{Genetic algorithms}
+
+Genetic algorithms (GAs) were originally used with bit strings to find optimal solutions to numerical problems \citep{holland75}. 
+However, they can be used with arbitrary data structures, and in this case melodic phrases are the subjects. \cite{horner93} provides an excellent example of a ``simple'' GA: 
+\textsf{
+\begin{quotation}
+\noindent Initialize the individuals in the population \\
+While not finished evolving the population \\
+\indent Assess the fitness of each individual \\
+\indent Select better individuals to be parents \\
+\indent Breed new individuals \\
+\indent Build next generation with new individuals \\
+Loop
+\end{quotation}}
+
+The initial melodic phrases are generated by some simple procedure (for example, using random numbers). Each iteration of the algorithm selects the ``most fit'' members of the population, combines and mutates them to build a stronger new population. The nature of the combination and mutation algorithms, as well as the fitness assessment itself, can have profound effects on the output of the algorithm.
+
+Two traits of GAs make them desirable for jazz improvisation: they have a random element in the nature of combination, mutation and selection, which creates unpredictable and varied results; and they rapidly converge to \emph{good} solutions without necessarily finding the \emph{optimum}. While the latter would be an issue for many classes of problem, composition is not as clear-cut and there will be many good solutions, ensuring that each musical output is unique.

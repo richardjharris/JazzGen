@@ -1,0 +1,15 @@
+# Print all possible scales for all possible chords of the supplied base note
+base_note = 0
+base_note_name = getNote(base_note)
+for c in chords:
+    print "\n" + chord.getName(c) + " [" + " ".join([getNote(n) for n in getChord(base_note, c)]) + "]"
+    for s, notes in getScaleFromChord(base_note, c).iteritems():
+        try:     scale_name = getNote(base_note+s[1]) + " " + scale.getName(s[0])  # (scale, offset)
+        except:  scale_name = base_note_name + " " + scale.getName(s)
+        print "  %s: %s" % (scale_name, " ".join([getNote(n) for n in notes]))
+        
+# Test crossover        
+a = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+b = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+for f in (crossover.SinglePoint, crossover.DoublePoint, crossover.Uniform, crossover.Average):
+    print "%s: %s" % (crossover.SinglePoint.__name__, f(a, b))        

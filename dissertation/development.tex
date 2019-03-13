@@ -1,0 +1,347 @@
+\chapter{Development}
+
+\qq{I'll play it first and tell you what it is later.}{Miles Davis}
+
+After designing \jg, work immediately began on developing the system in Python. While development
+was swift and enjoyable, the speed of the fitness function was simply too slow -- even without
+a full fitness function, a few hundred iterations took minutes. There are several reasons for this:
+one is Python's interpreted nature, which prevents the rapid loops present in genetic algorithms
+from being optimised. The second is Python's \emph{dynamic} nature, which means every single function
+call and variable is looked up each time it is used -- particularly bad for chained lookups such as
+\tt{gen.chord.bestScale.note[0]}. By switching to Java, and judiciously using bytecode arrays, primitive
+types and fast array copy routines, the speed was greatly improved.
+
+The final system consists of 50 source files and over 4,000 lines of code, of which around 20\% are comments.
+This chapter will go into some detail about the choices made when developing the core components of the
+system, and reveal more detailed information about the fitness modules, mutation methods and other areas
+that were not set in stone at the design stage.
+
+\section{Music generation}
+
+This description describes the generation engine behind \jg, in particular the genetic algorithm.
+
+\subsection{The JazzGen class}
+
+The \tt{JazzGen} class is a singleton, invoked whenever music needs to be generated. A jMusic score is constructed with the appropriate parts, and the genetic algorithm is invoked to produce the piano solo. This class also interfaces with jMusic to play MIDIs or write the piece to file, and acts as a bridge between the user interface and the genetic algorithm and jMusic itself.
+
+Due to their simplicity, the bass and drum tracks are also created within this class. The bass track is a simple random walk; it gets the current chord, begins at the root and walks up or down, one note at a time, changing direction around 50\% of the time. The walk ``bounces'' off the start or end of the chord, and is thus limited to only four or five notes. The drum loop, and chords, are almost completely static although the snare drum has a random velocity from 0 to 60, to make it sound slightly more natural.
+
+\subsection{GeneticGenerator}
+
+The real work is performed by the \tt{GeneticGenerator} class, which is a singleton; its \tt{run} method accepts an empty jMusic \tt{Phrase} object\footnote{The \tt{Phrase} object is a list of notes, with associated durations and velocities.}, which will contain a final sequence of notes when the function terminates. We generate the music two ``blocks'' at a time, where each block represents two bars and has a length $phraseLen = 32$. This equates to a maximum resolution of 16\th{} notes.
+
+The generation is designed to mimic the original algorithm: initialise then evaluate fitness, select, crossover, mutate to form new population, replace old population, repeat. The algorithm terminates after $maxGenerations$ iterations, which defaults to 1000. There are a few extra considerations:
+
+\begin{itemize}
+	\item Each round, a number $elitismSel$ of the fittest members are copied to the next generation untouched; this prevents mutation and crossover from corroding a particularly good specimen. Their fitness values are cached so they will not be recalculated unnecessarily.
+	\item To do this (and other things), the population must be ranked by fitness. There exists an array of candidates \tt{population} and an array of fitness values \tt{fitness} for these candidates. To produce an array of candidate indices, ordered by fitness:
+	\begin{enumerate}
+		\item Produce an array \tt{ordering} = $[0, 1, 2, \cdots (\tt{fitness.length} - 1)]$.
+		\item Perform a \emph{quick sort} on a copy of \tt{fitness}, duplicating all value swaps on \tt{ordering}.
+		\item Thus \tt{ordering}'s indices are now sorted in the same way as the fitness values; the first index corresponds to the lowest score, and so on. Return \tt{ordering}.
+	\end{enumerate}
+	The reader is encouraged to send in a better solution if one rapidly comes to mind.
+	\item Each child is mutated with probability $mutationProb = 0.5$.
+	\item When building up the new population, the old one is untouched; the same parents can be selected multiple times, but are subjected to most likely unique crossover and mutation stages.
+\end{itemize}
+
+Selection is (as mentioned earlier) performed via tournament selection: $tourSize$ candidates are picked, and the best is selected; this is repeated $2 \times populationSize$ times to build the new population. After all iterations are complete, the most fit candidate is converted into jMusic format and added to the \tt{Phrase} object. The history buffer, used for initialisation and fitness evaluation, is cycled to include the new output.
+
+\subsection{Initialisation}
+
+The GA needs an initial population to operate on. If it is not the first block, and given $repeatPhraseProb$ probability, a previously-output block is used as an initialisation seed. The block offset to use is defined as \[ offset = m - \left\lfloor rand()^{skew}\, m \right\rfloor - 1 \] where the offset is 0 for most recent, 1 for second most recent etc; $m$ is the maximum available history (e.g.\ $m = 1$ at second block, $m = 2$ at third block); $rand()$ returns a random value between 0.0 and 1.0 and $skew$ is a skew factor, generally equal to $\frac{1}{2}$. Setting it lower creates more pressure to pick recent bars; setting it closer to 1 tends to a uniformly random distribution.
+
+With probability $\frac{1}{2}$, the previously-output phrase is transposed to fit the currently playing chord. For example, a phrase that originally played over C7, moved to D7, would be transposed up two semitones (a transposition of seven semitones or higher is shifted down instead). Where there are multiple chords per block, the transposition shift is calculated for each note individually.
+
+\subsubsection{Initialisation methods}
+
+The majority of initial seeds are not reused, but generated anew. This process is encapsulated by the \tt{InitMethod} class, which acts as a function pointer; the user can replace the GA's \tt{InitMethod} with a new one at any time. Each implements a \tt{generate} method which outputs an array of notes. Finally, the \tt{InitMethodFactory} contains the list of initialisation methods, their names, and can create a new \tt{InitMethod} object of the given name on demand. Each of the basic methods are designed to generate notes in the range C3--C6 and choose rests approximately half of the time; completely random pitches and durations would take too long to resolve to something musically useful. The basic methods are:
+
+\begin{description}
+\item[InitRandomScale] Pick a random octave and scale note index, and generate notes in the current scale only.
+\item[InitRandomChromatic] Pick \emph{any} note in the central octaves.
+\item[InitOneOverF] Implements the 1/f distribution algorithm by R. F. Voss and featured in \citep{dodge85}. Generates notes in the current scale and predominantly in the central octaves.
+\end{description}
+
+\textbf{InitChaotic} uses the \emph{Chirikov standard map} to generate pitches and durations. This map is defined as: \begin{eqnarray*}p_{n+1} & = & p_n + K \sin \theta_n \\
+	\theta_{n+1} & = & \theta_n + p_{n+1}
+\end{eqnarray*}
+where $p_n$ and $\theta_n$ are taken modulo $2\pi$. The constant $K$ influences the degree of chaos. The range of the first output is between 0 and $2\pi$; this range is mapped to an offset of -3 to 3 (in scale steps) from the previous pitch to deduce the new one, with the first note being the root. The second output has the same range and is mapped to specific durations according to a simple weighted distribution (see \tt{InitChaotic.java}). This continues until the entire phrase has been generated.
+
+The values of $p$ and $\theta$ are initialised to 2 \citep[as in][]{morris05}. The value of $K$ is set to a random value between 0.5 and 2.5, which makes each seed unique.
+
+\subsection{Mutation}
+
+Mutation is performed via the \tt{MutationFunction} class, which accepts a phrase and modifies it in-place. The function consists of several different \emph{mutations}, described below. Each mutation can be enabled or disabled by the user individually; one is selected at random and applied to the child.
+
+Below are the mutation functions implemented, where the note change probability $p = \frac{1}{2}$:
+
+\begin{description}
+\item[Sort pitches ascending] Sort the \emph{pitches} of the phrase from lowest to highest; leave rests (and rhythm) intact.
+\item[Sort pitches descending] Sort the pitches from highest to lowest.
+\item[Reverse pitches] Reverse the order of the pitches, leaving rhythm intact.
+\item[Reverse phrase] Reverse the entire array, including rests.
+\item[Rotate pitches] Rotate the pitches, leaving rhythm intact. Rotation is between 1 and $numPitches - 2$ to the right (which also covers all left rotations).
+\item[Rotate phrase] Rotate the entire array between 1 and $phraseLen - 2$ steps to the right.
+\item[Transpose] Add a random number of semitones, between -3 and 3, to \emph{all} pitches.
+\item[Octave transpose] Transpose the phrase up or down a single octave.
+\item[Restify] Replace each note with a rest with probability $p$.
+\item[Derestify] Replace each rest with a note, randomly selected between the lowest and highest note in the current phrase, with probability $p$.
+\item[Uniform pitch change] Add between -5 and 5 semitones to each pitch in the phrase with probability $p$. Each shift amount has an equal chance of being selected.
+\item[Normally distributed pitch change] Shift each pitch by $k$ semitones with probability $p$; $k$ is selected from a discrete normal distribution with mean 0 and standard deviation 3.
+\end{description}
+
+General-purpose routines were created to rotate and reverse arrays, as Java seems to be lacking them. Operations over pitches were performed by splitting the phrase into a pitch array and a duration array using the \tt{PhraseInfo} object (described in section \ref{ss-phraseinfo}, page \pageref{ss-phraseinfo}), then re-assembling them. To avoid problems, the sort, rotate and reverse routines check that the phrase contains more than one note, otherwise nothing happens.
+
+\subsection{Crossover}
+
+Crossover methods are implemented as described in section \ref{ss-reproduction} (page \pageref{ss-reproduction}). Each method is a subclass of the abstract \tt{CrossoverMethod} class which allows the method to be changed at runtime. The \tt{CrossoverMethodFactory} lists all method classes and can construct them if given a name or index. The default method is set to the uniform crossover.
+
+\section{Fitness function}
+
+Evaluation takes place over the entire population with each iteration, and once more after all iterations are complete to select the highest fitness candidate. Of course, any candidates who have been left unchanged since the last iteration keep their existing fitness score.
+
+To begin with, a ``fitness subject'' is constructed containing zero or more previous blocks (according to the user's $maxPrevPhrases$ setting, the history buffer size, and the current block index) plus a zeroed block at the end. For each member of the population, the candidate is copied to this zeroed area and the entire subject is sent to the fitness function for evaluation. Thus in all blocks except the first, historic context and its compatibility with the current candidate are evaluated.
+
+The fitness function then transforms this subject into a \tt{PhraseInfo} object and calls all of its enabled \emph{fitness modules} with this subject, performing a weighted summation as outlined in section \ref{ss-des-fitfunc} (page \pageref{ss-des-fitfunc}); this weighted summation serves as the fitness score for that subject.
+
+\subsection{PhraseInfo}
+\label{ss-phraseinfo}
+
+The \tt{PhraseInfo} object is the only argument to the fitness modules, and thus contains all possible information that a fitness module might want to know. This includes note count, phrase count (as there may be multiple blocks present) and the input itself as a byte array.
+
+When the object is constructed, the object is also transformed into two linked arrays of pitches and durations. This format is particularly useful for modules that evaluate melody or rhythm exclusively. The initial rest length is also stored, but is not typically used (as previous blocks may have extended it, making it indeterminate), and nor is the final note duration for similar reasons. 
+
+\tt{PhraseInfo} also contains convenience methods such as \tt{getChordAt}, which returns the currently-playing chord for a given index of the subject array. This is necessary because each subject contains multiple blocks, and each block contains multiple chords.
+
+\section{Fitness modules}
+
+As with initialisation and crossover methods, fitness modules inherit from a base class (\tt{FitnessModule}) and are managed by a \tt{FitnessModuleFactory}. The base class specifies the module's weight (importance) and whether module is enabled. Its core method, \tt{evaluate}, accepts a \tt{PhraseInfo} subject and returns a floating-point fitness score $\in [0,1]$ as described in the requirements. Each module should return a roughly consistent distribution of fitness scores.
+
+A description of each module follows; the \tt{Fm} prefix stands for ``fitness module''.
+
+\subsection{FmInfluenceTest}
+
+This module is used to track the relative influence of modules in the weighted summation, and to test the genetic algorithm in general. The implementation changes often, but generally encourages every note in the phrase to be C4; the returned fitness is $\frac{{\rm Number\ of\ C4\ notes}}{phraseLen}$.
+
+\subsection{FmKey}
+
+Each note in the \emph{most recent} block is checked against the current scale. Fitness is defined as the \% of those notes that are in the scale: the fitness score is \emph{not} affected by the number of notes in the phrase. This module is critical in ensuring tonality and is thus given a higher default importance.
+
+\subsection{FmRange}
+
+\tt{FmRange} returns a score of 1 if \emph{all} notes are within the user-supplied minimum and maximum octaves (by default, C3--C6 inclusive) -- or 0 otherwise. This module prevents melody lines from leaving the reasonable pitch range as they are immediately punished; due to its importance, it is given a higher default weight.
+
+\subsection{FmPitch}
+
+Checks each interval (distance between adjacent pitches, in semitones). A user-supplied table maps intervals of 0--12 semitones to scores; intervals above an octave receive a score of zero. By default, scores are based on consonance and proximity (smaller intervals are rated higher). An additional bonus is provided if the phrase begins with the root note. The fitness is represented as the score divided by the maximum possible score for that phrase.
+
+\subsection{FmRhythm}
+
+\tt{FmRhythm} carries out a number of rhythmic tests over the subject. It encourages:
+
+\begin{description}
+	\item[Notes on specific beat positions] e.g.\ power-of-two subdivisions of the bar
+	\item[Adjacent durations of similar length] to encourage consistent rhythm
+	\item[Power-of-two note lengths] to discourage overt syncopation
+	\item[4\th, 8\th\ and 16\th\ notes] to encourage the most common durations
+\end{description}
+
+Fitness is defined as the score divided by the maximum possible value. The initial rest and last duration are ignored as blocks either side of the subject may extend them.
+
+\subsection{FmRepetition}
+
+This module performs a simple scan of all two- and three-note sequences against all other such sequences. If the pitches of both sequences match, and the sequence does not contain the same adjacent note twice (to discourage repeating the same note for long lengths of time), a bonus is awarded. Fitness is defined as $\frac{3 \times score}{maxScore}$.
+
+A maximum or high score is difficult to obtain; multiplying the score by three evens out the score distribution and nullifies the effect of \emph{too much} repetition, since we don't really want to encourage that anyway.
+
+\subsection{FmRhythmRep}
+
+Performs the exact same routine as \tt{FmRepetition}, only on note \emph{durations} rather than pitches. This experimental module is designed at nurturing structural consistency by looking for duplication of rhythmic patterns within the subject.
+
+\subsection{FmScales}
+
+\tt{FmScales} encourages melodic contours that would not naturally evolve otherwise: specifically, chains of ascending or descending notes. Where the note is a single scale step above or below the last, bonus points are awarded -- this encourages ``scale runs'', as commonly seen in improvisation. The algorithm performs a simple scan of all notes in the phrase, keeping track of sequences where the registral direction (motion of notes up or down) is constant. The final fitness score is equal to the \emph{longest} run, plus bonus points for single scale steps, over the maximum score.
+
+There is an option for this module to only come into effect for approximately $\frac{1}{8}$ of all blocks; combined with a high weighting, this has the effect of making the improvisation suddenly change into scales at some point in the improvisation, then revert back to regular playing. This has a more pronounced effect on the output than simply encouraging scales at all points in the piece.
+
+\subsection{FmExpectancy}
+
+The first implementation of expectancy tries to follow the spirit of Narmour's original model, with finely-grained bonus scores and score multipliers for specific conditions. For each pair of adjacent intervals $i, j$ with note durations $L_i, L_j$, the following rules hold:
+
+\begin{description}
+	\item[Registral direction] If $i$ is large ($>$ 6 semitones) and the registral direction has changed, add 1 to the score. Otherwise, if the direction is the same, add $6 - i$ to the score -- smaller intervals have larger implications.
+	\item[Intervallic difference] If $i$ is small, add $\frac{2(i+1)}{1+|i - j|}$ to the score -- implying similar-sized intervals. Otherwise, if $i > j$, add $i$ to the score -- implying smaller intervals.
+	\item[Closure] Increase expectancy for these intervals if registral direction is reversed, $i$ is large and $j$ is small, or $L_j > L_i$.
+\end{description}
+
+Additionally, expectancy is increased if \textbf{registral return} -- the pattern $\textbf{aba}^\prime$ where $\textbf{a}^\prime$ is $\pm\, 2$ semitones of \textbf{a} -- is found in the phrase.
+
+The final score is then mapped to a value between 0 and 100 via division by an empirically-derived constant, in this case $3.5 \times phraseCount$. The fitness value is defined as \[ 1 - \left(\frac{|exp - targetExp|}{targetExp}\right)^{punishFactor} \] where $exp$ is calculated expectancy, $targetExp$ is target expectancy in percent (default:~75), and $punishFactor$ determines the score scaling for non-optimal phrases (default: \~{}2).
+
+\subsection{FmExpectancy2}
+\label{dev-exp2}
+
+This module implements Schellenberg's revised model of expectancy \citep{schellenberg96} which is considerably simpler in nature. There are three tests, all performed over pairs of intervals $i, j$: the \emph{implicative} and \emph{realised} intervals respectively.
+
+\begin{description}
+	\item[Registral direction] If $i$ is large ($> 6$ semitones) add 2 if the registral direction has changed, 0 otherwise. If $i$ is small, add 1.
+	\item[Registral return] if $j$ is in a different direction to $i$, and $|i - j| \leq 2$, add 1.
+	\item[Proximity] Add $12 - j$ to the score if $j < 12$ -- smaller intervals get a higher score.
+\end{description}	
+
+The module specifies three user-configurable weights, one for each test. By default these weights are 2, 3 and 0.5, so that all tests have the same maximum score of 6. The target expectancy is once again 75\% and the final fitness score is calculated as before.
+
+Obviously, only one expectancy model should be enabled at a time. In theory both should result in the same quality of output.
+
+% FmNumNotes, FmChord, FmRepetition2
+	 
+\section{User interface}
+
+\jg{} could certainly be controlled via the command line, but given the large number of choices and options the user can make, this would be unwieldy. Instead, a full user interface allows the user to navigate through genetic algorithm options easily.
+
+\fig{jazzgenui}{\jg{}\ user interface: fitness function tab}
+
+The \tt{JazzGenUI} class handles the Java Swing user interface for the system. Figure \ref{fig-jazzgenui} shows the UI with the ``Fitness function'' tab selected.
+
+The user design has been designed in a simple fashion: the placement of components from top to bottom represents the workflow of generating a composition. First, highly dynamic information such as the chord progression and tempo. Then, the genetic algorithm parameters. Finally, the end-point of the interaction: generate the improvisation, play it or export it. The progress bar at the very bottom of the interface reflects the status of the GA. Each task takes place on a separate thread, so (for example), a new output can be generated while the old one is playing.
+
+To avoid a cluttering of class files, button click and UI component change events are handled by \emph{inner classes} that reside within \tt{JazzGenUI}. The \tt{ActionListener} interface provides a simple way to receive and action UI events.
+
+See Appendix \ref{appendix-lilypond} for sample Lilypond output.
+
+\subsection{Configuration framework}
+
+Central to the interface to a set of options: enabled mutations and fitness modules, GA parameters, selected crossover and initialisation methods, etc. These options must be modifiable via the user interface, propagated back to the class concerned, and finally saved to a file on application close for later restoration. To handle all of this, a consistent \emph{configuration framework} is employed across all classes and components.
+
+The \tt{Config} object is responsible for the saving and loading of options. It is a hash table, mapping identifiers (strings in this case) to arbitrary objects or arrays of objects. Using the standard \tt{get} and \tt{put} methods, each class can retrieve and save the options for its own identifier(s).
+
+\begin{table}[ht]
+	\caption{Typical \tt{Config} class identifiers}
+	\centering
+	\begin{tabular}{l l}
+	\hline\hline
+	Class name & Identifier \\ [0.5ex]
+	\hline
+	CrossoverAverage & \tt{c.avg} \\
+	CrossoverRandomMask & \tt{c.rm} \\
+	FmExpectancy & \tt{fm.exp} \\
+	FmPitch & \tt{fm.pitch}, \tt{fm.pitch.bonus} \\
+	GenAlgOptionsUI & \tt{genopt.int}, \tt{genopt.double} \\
+	InitOneOverF & \tt{i.1/f} \\
+	MutationOptionsUI & \tt{mutopt} \\ [1ex]
+	\hline
+	\end{tabular}
+	\label{tbl-config-keys}
+\end{table}
+
+The identifiers are hierarchical and each module can have several. For example, convenience might dictate storing an array of \tt{double}s and an array of \tt{int}s separately, instead of boxing all the values and storing them as an array of \tt{Object}s.
+
+\subsubsection{Saving and loading}
+
+The \tt{Config} class uses an \tt{ObjectOutputStream} to serialize itself into a string suitable for saving to disk. It then uses standard Java I/O to store or retrieve itself from an arbitrary filename. In addition, a default filename \tt{default.opt} is defined: this filename is used to automatically save the configuration when \jg\ closes, and restore it when it starts up again.
+
+\subsubsection{Save, load, commit}
+
+For every option-bearing object (fitness module, initialisation module, the main interface components) there must exist three standard methods:
+
+\begin{table}[H]
+	\caption{Configuration method list}
+	\centering
+	\begin{tabular}{l p{10cm}}
+	\hline\hline
+	Method prototype & Description \\ [0.5ex]
+	\hline
+	\lstinline!public void commit()!       & Parse the user interface and update the method's parameters to reflect the UI values. \\
+	\lstinline!public void save(Config c)! & Save method's parameters to a \tt{Config} object.\ \tt{commit} should be called first. \\
+	\lstinline!public void load(Config c)! & Load method's parameters from a \tt{Config} object. \\ [1ex]
+	\hline
+	\end{tabular}
+	\label{tbl-config-methods}
+\end{table}
+
+The methods are defined by the abstract class \tt{GeneticMethod}. In some cases, the objects are constructed with the \tt{Config} object instead of calling \tt{load}.
+
+\subsection{JazzGen invocation}
+
+If \jg\ were executed in the same thread as the user interface, the UI would become unresponsive and ``freeze'' while the output is generated. The algorithm must instead run in a separate thread, but it also needs a way to notify the user interface of its current progress (blocks generated), and to tell the user when it completes.
+
+Two additions to the code base are needed. First, the \tt{JazzGen} object is modified to support an \emph{observer} which can hook-in via the \tt{setObserver} method; \jg\ will then notify this object of its progress updates. Then, the observer is created as a subclass of the \tt{SwingWorker} built-in class: this library automatically handles running code in a separate thread and \emph{safely} dispatching progress updates to the user interface. All that is needed is to implement the \tt{doInBackground} method (which initialises and runs the generator), the \tt{updateProgress} method (which handles progress update messages), and to call the \tt{execute} method of the observer after committing all options.
+
+\subsection{Configuration tabs}
+
+Each tab controls a different aspect of the genetic algorithm.
+
+\subsubsection{Fitness function}
+
+The fitness function tab is shown in Figure \ref{fig-jazzgenui} (page \pageref{fig-jazzgenui}). A list of fitness modules lies to the left; the user may select one by clicking its name. The right side of the tab then updates to show the settings for the selected module. A helpful single-line description of the module is shown, followed by options available to all modules (enabled/disabled, importance). The box underneath these components will contain module-specific settings; each module implements a \tt{getOptionsUI} method which returns a \tt{JPanel} containing this UI.
+
+\subsubsection{Genetic algorithm}
+
+\fig{genalgui}{\jg\ user interface: genetic algorithm options tab}
+
+The genetic algorithm tab is displayed in Figure \ref{fig-genalgui}. This tab contains a simple vertical list of options presented in a consistent format. The most important parameters are listed first, grouped roughly into: general options, selection/mutation, history.
+
+\subsubsection{Mutation}
+
+\fig{mutoptui}{\jg\ user interface: mutation tab}
+
+The mutation tab is shown in Figure \ref{fig-mutoptui}. Each method is displayed in a simple table; each row contains a pair of related mutations. 
+
+\subsubsection{Initialisation}
+
+\fig[0.5]{initui}{\jg\ user interface: initialisation tab}
+
+The initialisation tab can be seen in Figure \ref{fig-initui}. The choice of method can be selected via the drop-down box. If the method has any options, they are displayed immediately below this box. The most common methods are listed first.
+
+\subsubsection{Crossover}
+
+\fig[0.5]{crossoverui}{\jg\ user interface: crossover tab}
+
+Figure \ref{fig-crossoverui} displays the crossover options tab. The layout is identical to that of the initialisation tab.
+
+\section{Chord progression}
+
+The chord progression dictates the size of the musical output, and the keys and scales that are used in the improvisation: it is crucial to providing a harmonic context to the improvisation. A system is therefore needed to represent scales, chords and the progression itself. Extensibility is a key concern, as more scales or chords may need to be added at any time.
+
+\subsection{Scales and chords}
+
+To implement scales and chords quickly and cleanly, Java \tt{enum}s are used. This relatively new feature, introduced in Java 1.5, implements typesafe enums as anonymous subclasses of a base class. The enums can be assigned arbitrary values, or sets of values, via the base class constructor. For example:
+
+\begin{lstlisting}[style=snippet]
+public enum Scale {
+	Major(new byte[] {0, 2, 4, 7, 9, 11}),
+	Blues(new byte[] {0, 3, 5, 6, 7, 10}),
+	...
+	public final byte[] offsets;
+	
+	Scale(byte[] offsets) { ... }
+	public byte[] notes(byte root) { ... }
+	...
+}
+\end{lstlisting}
+
+In this case, the value of a scale is an array of its offsets from the root note, in semitones. A utility method is attached to the enum; this returns the offsets for a given root note (by adding the root note to every note in the scale, mod 12, then sorting them in ascending order).
+
+Chord \emph{types} are represented by the \tt{ChordType} class, storing both the offsets of the chord's notes, and the scale best played over the chord type, e.g.\  \tt{Scale.Locrian}. Finally, the \tt{Chord} class encapsulates the chord type, root note and inversion. Inversions can be positive or negative; this determines how many notes from the right or left of the chord are increased or decreased by an octave respectively. It is possible to, for example, specify a fifth inversion of a dominant seventh chord: the root note is transposed two octaves higher, while the other notes are transposed one octave.
+
+\subsection{Parsing the progression}
+
+The user inputs the progression in a simple format, e.g.
+
+\begin{figure}[H]
+	\centering
+	\tt{Em7 F7 BbMaj7 Db7 / GbMaj7 A7 DMaj7 \\ Dm7 Eb7 AbMaj7 B7 / EMaj7 G7 GMaj7}
+	\label{fig-favourite-things}
+	\caption{Chord progression for \emph{Countdown} by John Coltrane}
+\end{figure}
+
+The \tt{/} character, \tt{|} character or newline denotes a new bar. Let $N$ be the number of chords defined within the bar. If $N$ is a power of two, the chords are timed to occur evenly across the bar's duration. If not, round up to the nearest power of two and assume the ``missing entries'' are repeats of the last chord in the bar. For example, \tt{G7 F7 C} becomes \tt{G7 F7 C C}.
+
+\subsection{Voice leading}
+
+The \tt{ChordProgression} class encapsulates chord progression information, and performs the parse by accepting a \tt{String} as its constructor. It also maintains a statically-initialised map of \tt{String} $\to$ \tt{ChordType} relations; most common chords, from \tt{C+} to \tt{B\#maj7+11}, are supported. Sharps are represented by \tt{\#} and flats by \tt{b}; the input is case-insensitive.
+
+If the root position was used for all chords, the harmony would harshly jump up and down in pitch, as may the solo itself (depending on fitness function implementation). Instead, chords are inverted such that the distance between notes in adjacent chords is minimised.
+
+The inversion is a simple process: the first chord is left at root position. For each subsequent chord, try inversions from -4 to 4 and add the distance between every pair of consecutive notes (with some adjustment). The lowest score inversion is used. However, inversions that bring the chord so low that it would conflict with the bass, or so high that it might conflict with the solo, are given a score penalty. If two inversions have the same score, one is picked at random; this avoids the problem of always picking the higher or lower of the inversions, which would cause the chord progression to consistently move upwards or downwards in pitch over time.

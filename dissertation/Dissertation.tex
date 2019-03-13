@@ -1,0 +1,32 @@
+\documentclass[11pt,openright,a4paper]{report}
+%\includeonly{header,testexp}
+\include{header}
+
+\title{Algorithmic composition of jazz}
+\author{Richard Harris}
+\date{Bachelor of Science in Computer Science with Honours\\University of Bath\\May 2008}
+
+\begin{document}
+\bibliographystyle{plainnat}
+\pagenumbering{roman}
+\include{title}
+\include{preliminaries}
+
+\pagenumbering{arabic}
+\include{introduction}
+\include{litsurvey}
+\include{reqdes}
+\include{development}
+\include{testexp}
+\include{evaluation}
+
+\appendix
+\include{x-lilypond}
+\include{x-old-ff}
+\include{codelistings}
+
+\addcontentsline{toc}{chapter}{References}
+\renewcommand{\bibname}{References}
+\bibliography{project}
+
+\end{document}

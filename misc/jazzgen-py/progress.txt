@@ -1,0 +1,31 @@
+Pre-11 Feb: python midi investigation, scales, chords
+Feb 11: real-time midi for multiple simultaneous notes. basic generation.
+Feb 13: read up on genetic algos
+
+Problems: swing rhythm, 16 note chords overlapping, cutting each other off
+Next primary goal: genetic algorithm implementation
+Need clever crossover operators etc.
+
+The genetic algorithm should operate on sets of 8 notes, designed to build off the last 8 (or more)
+The fitness function should be designed to work over any amount of history, as when started, it only has the 
+  genetic output to go on.
+Need to pay attention to mutatorP, crossoverP etc.
+
+
+Roadmap:
+--------
+
+FEB 11 - FEB 17
+FEB 18 - FEB 24 Ideally basic genetic algo done by this point
+FEB 25 - MAR 02 Tuning, drums, bass
+MAR 03 - MAR 09 Poster
+MAR 10 - MAR 16 [Easter: Mar 15] Poster hand-in; UI, lilypond, drums/bass
+MAR 17 - MAR 23
+MAR 24 - MAR 30
+MAR 31 - APR 06
+APR 07 - APR 13
+APR 14 - APR 20
+APR 21 - APR 27
+APR 28 - MAY 04 Dissertation due in
+MAY 05 - MAY 11 [Revision week]
+MAY 12 - MAY 30 [Exams]

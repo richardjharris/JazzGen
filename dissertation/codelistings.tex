@@ -1,0 +1,73 @@
+\chapter{Code listing}
+
+This is a representative sample of code for \jg. An attempt has been made to focus on interesting, relevant
+code that serves an important function in the system.\begin{center}\rule[0.1cm]{0.6\textwidth}{0.5pt}\end{center}
+
+\emph{The full code listing can be found in the \tt{src} directory on the CD.} 
+
+\section{Main classes}
+\subsection*{JazzGen.java}
+This class generates the chords, bass and percussion, and sets up the \tt{GeneticGenerator} class to generate the main solo.
+\lstinputlisting{CD/src/JazzGen.java}
+
+\subsection*{GeneticGenerator.java}
+This is the genetic algorithm. Triggered by JazzGen, it interfaces with many other classes to initialise the population,
+select, mutate, crossover and evaluate the fitness of each generation. Finally, it returns a \tt{Phrase} object containing
+the melody line.
+\lstinputlisting{CD/src/GeneticGenerator.java}
+
+\section{Genetic algorithm method classes}
+\subsection*{CrossoverDoublePoint.java}
+This is the basic double-point crossover used for most of the examples in this document.
+\lstinputlisting{CD/src/CrossoverDoublePoint.java}
+
+\subsection*{InitChaotic.java}
+The chaotic initialiser, used with the Standard map. See also \tt{InitOneOverF.java} for the 1/f generation
+used in most examples.
+\lstinputlisting{CD/src/InitChaotic.java}
+
+\subsection*{MutationFunction.java}
+Contains all of the mutation methods, selected at random. User interface is handled by \tt{MutationFunctionUI.java}.
+\lstinputlisting{CD/src/MutationFunction.java}
+
+\section{Fitness modules}
+\subsection*{FmKey}
+A very simple fitness function (UI and other class methods removed) that simply returns the \% of notes that are
+on-key.
+\lstinputlisting{key.java}
+
+\subsection*{FmExpectancy2}
+Evaluates melodic expectancy according to Schellenberg's simplified model. \tt{regDirCE}, \tt{regRetCE} and \tt{proxCE} are weightings
+for each of the three metrics involved.
+\lstinputlisting{exp.java}
+
+\subsection*{FmRepetition2}
+Checks for similar melodic strings within a block, awarding partial scores for near-matches.
+\lstinputlisting{rep2.java}
+
+\section{Chord progression}
+\subsection*{ChordProgression.java}
+This larger class implements voice leading, chord progression parsing, and includes a test method to ensure
+that both are correct.
+\lstinputlisting{cp.java}
+
+\chapter{Running the code}
+
+A precompiled version can be found in the \tt{bin} directory; jMusic must first
+be installed and added to the Java classpath. \jg\ can then be executed with \tt{java JazzGenUI}. Alternately
+the source can be found in \tt{src}; important files from the \tt{bin} directory may need to be copied over
+for execution:
+
+\begin{description}
+\item[lilypond.template] Required for Lilypond output.
+\item[defaults.opt] Contains sensible options as derived in Chapter \ref{chap-testexp}, Testing and Experimentation.
+\item[fitness.xlsx] Excel 2007 spreadsheet used for stat logging. After generating a phrase \tt{fitness.csv} will be
+ created in the current directory. Copy this data into the first worksheet of \tt{fitness.xlsx} and check the other
+ worksheets for graphs.
+\end{description}
+
+\section*{Usage information}
+
+After setting the options, click \textbf{Generate}. Once the progress bar is full, click \textbf{Play} to hear
+the composition. The user interface has been designed for personal experimentation only and may not be user
+friendly to others.

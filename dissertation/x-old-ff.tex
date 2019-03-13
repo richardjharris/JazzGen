@@ -1,0 +1,33 @@
+\chapter{Original fitness function specification}
+\label{appendix-old-ff}
+
+The following table lists all constraints responsible for generating the earlier MIDI outputs referenced in section \ref{sec-earlyff} (page \pageref{sec-earlyff}). Following each constraint is the associated score modifier: the final fitness value is an integer that may be positive or negative.
+
+\begin{center}
+	\begin{tabular}{p{0.5\textwidth} r}
+	\hline\hline
+	Event & Score modifier \\ [0.5ex]
+	\hline
+	Note not in scale & -30 \\
+	Note is rest\footnotemark & -10 \\
+	Interval is 12 (octave) & -5 \\
+	Interval is $> 4$  semitones & $-\lfloor \frac{interval^2}{16} \rfloor$ \\
+	Adjacent note lengths are within 2 units of each other & +30 \\
+	\ldots{}otherwise & $-(10 + \frac{note\ difference^2}{4})$ \\
+	Note length is power of two & +15 \\
+	Note is on 1\st\ or 16\th\ unit & +10 \\
+	Note is on 1\st, 8\th, 16\th or 24\th\ unit & +5 \\
+	Note is on 1\st, 4\th, 8\th\ldots 28\th\ unit & +2 \\
+	Note is lower than C4 & $-\lfloor \frac{C4 - pitch}{5} \rfloor$ \\
+	Note is higher than C7 & $-\lfloor \frac{pitch - C7}{3} \rfloor$ \\
+	Note is on position 30 or 31\footnotemark & $-40$ \\
+	Repetition of any two note pair & +3 \\
+	Repetition of any three note pair & +10 \\
+	Bonus per note\footnotemark & +5 \\ [1ex]
+	\hline
+	\end{tabular}
+\end{center}
+
+\footnotetext[1]{Rests are punished as most penalties don't apply to them; otherwise, they would accumulate.}
+\footnotetext[2]{This ``discourages syncopation''.}
+\footnotetext[3]{This compensates for the average negative value of a note, with would encourage long rests.}

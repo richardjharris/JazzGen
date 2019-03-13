@@ -1,0 +1,115 @@
+\usepackage{graphicx}
+\usepackage{pdflscape} % landscape mode for code listings
+\usepackage{multicol} % columns
+\usepackage{enumitem} % [resume] to split numbered lists
+\usepackage{float} % enables H for exact float position
+\usepackage{url}
+\usepackage[usenames,dvipsnames]{color}
+
+% toc
+\setcounter{tocdepth}{1}
+
+% bibliography
+\usepackage{natbib}
+\bibpunct{(}{)}{;}{a}{,}{,}
+
+% page size changes
+\usepackage{calc}
+\setlength{\parskip}{6pt}
+\setlength{\parindent}{0pt}
+
+% sane margins:
+\addtolength{\hoffset}{-0.5cm}
+\addtolength{\textwidth}{2.5cm}
+
+% headers
+\usepackage{fancyhdr}
+\setlength{\headheight}{15pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small \slshape Algorithmic Composition of Jazz}
+\fancyhead[R]{\small \slshape \leftmark}
+\fancyfoot[C]{\thepage}
+\renewcommand{\chaptermark}[1]{\markboth{\chaptername \ \thechapter. \ #1}{}}
+
+% code listings
+\usepackage{listings}
+\definecolor{lgray}{gray}{0.2}
+\lstset{
+		language=Java,
+		breaklines,
+		breakatwhitespace,
+		basicstyle=\ttfamily\footnotesize\color{black},
+		keywordstyle=\bfseries\color{blue},
+		identifierstyle=\color{lgray},
+		commentstyle=\itshape\color{OliveGreen},
+		stringstyle=\color{Gray},
+		showstringspaces=false,
+		tabsize=4		
+}
+\lstdefinelanguage{lilypond}{
+	language=,
+	basicstyle=\color{black}\footnotesize\ttfamily,
+	morekeywords={Staff,PianoStaff,set,new,version,header,title,date,include,clef,drummode,instrumentName,DrumStaff,DrumVoice,override,score,tempo,Score,MetronomeMark,midi},
+	sensitive=true % case-sensitive
+}
+\lstdefinestyle{snippet}{aboveskip=1em,xleftmargin=15mm}
+
+% my little functions
+\newcommand{\qq}[2]{\begin{quotation}
+#1 % ``#1''
+\begin{flushright} --- {\em #2} \end{flushright}
+\end{quotation}}
+
+\newcommand{\jg}{\emph{JazzGen}}
+
+% superscripts
+\newcommand{\superscript}[1]{\ensuremath{^{\textrm{\scriptsize #1}}}}
+\newcommand{\subscript}[1]{\ensuremath{_{\textrm{\small #1}}}}
+\renewcommand{\th}[0]{\superscript{th}}
+\newcommand{\st}[0]{\superscript{st}}
+\newcommand{\nd}[0]{\superscript{nd}}
+\newcommand{\rd}[0]{\superscript{rd}}
+
+\renewcommand{\tt}[1]{\texttt{#1}}
+
+% figure{img}{caption}
+\newcommand{\fig}[3][0.9]{
+\begin{figure}[htp]
+\centering
+\includegraphics[width=#1\textwidth]{#2}
+\caption{#3}
+\label{fig-#2}
+\end{figure}}
+
+% definitions for title pages
+\newenvironment{spaced}[1]
+  {\begin{minipage}[c]{\textwidth}\vspace{#1}}
+  {\end{minipage}}
+
+\newenvironment{centrespaced}[2]
+  {\begin{center}\begin{minipage}[c]{#1}\vspace{#2}}
+  {\end{minipage}\end{center}}
+
+\newcommand{\consultation}[1]{%
+\thispagestyle{empty}
+\begin{centrespaced}{0.8\textwidth}{0.4\textheight}
+\ifnum #1 = 0
+This dissertation may be made available for consultation within the
+University Library and may be photocopied or lent to other libraries
+for the purposes of consultation.
+\else
+This dissertation may not be consulted, photocopied or lent to other
+libraries without the permission of the author for #1 
+\ifnum #1 = 1
+year
+\else
+years
+\fi
+from the date of submission of the dissertation.
+\fi
+\vspace{4em}
+
+Signed:
+\end{centrespaced}
+}

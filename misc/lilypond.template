@@ -1,0 +1,64 @@
+\version "2.10.0"
+\header {
+	title = "%1$s"
+	date = "%2$tB %2$te, %2$tY %2$tR"
+}
+
+\include "english.ly"
+
+PianoSolo = {
+  %4$s
+}
+PianoChords = {
+  \clef bass
+  %5$s
+}
+Bass = {
+  %6$s
+}
+DrumsSNBD = \drummode {
+  \times 2/3 {bd4 r8} \times 2/3 {r4 sn8}
+}
+DrumsHH = \drummode {
+  hh4 \times 2/3 {hh4 hh8} hh4 hh4
+}
+
+piano = {
+  <<
+    \set PianoStaff.instrumentName = #"Piano "
+    \new Staff = "upper" \PianoSolo
+    \new Staff = "lower" \PianoChords
+  >>
+}
+bass = {
+  \set Staff.instrumentName = #"Bass   "
+  \clef bass
+  <<
+    \Bass
+  >>
+}
+hihat = {
+  <<
+    \set DrumStaff.instrumentName = #"Drums   "
+    \new DrumVoice { %7$s }
+  >>
+}
+snbd = {
+  <<
+    \new DrumVoice { %8$s }
+  >>
+}
+
+\score {
+  <<
+    \override Score.MetronomeMark #'padding = #3
+    \tempo 4 = %3$d
+
+    \new PianoStaff = "piano" \piano
+    \new Staff = "bass" \bass
+    \new DrumStaff { \hihat }
+    \new DrumStaff { \snbd }
+  >>
+}
+
+\midi { }

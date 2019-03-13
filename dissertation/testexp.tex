@@ -1,0 +1,198 @@
+\chapter{Testing and Experimentation}
+\label{chap-testexp}
+
+\qq{I have won several prizes as the world's slowest alto player, as well as a special award in 1961 for quietness.}{Paul Desmond}
+
+With the \jg\ system in place, it now remains to tailor the genetic algorithm such that it produces
+the best output possible in the time available. This process includes testing, finding and fixing
+bugs in the system, and carrying out tests on elements of the generation. Firstly, however, mention
+must be made of the original fitness function. \begin{center}\rule[0.1cm]{0.6\textwidth}{0.5pt}\end{center}
+
+\emph{MIDI files, as supplied on the CD in the \tt{midi} directory, are referenced like so:} [early1] \emph{corresponds to
+the file} \tt{early1.mid}\emph{. Except where explicitly stated, all files represent the \textbf{first}
+GA output with the relevant settings, to avoid the hand-picking of superlative outputs that would make the
+algorithm seem better than it actually is.}
+
+\section{Early fitness function}
+\label{sec-earlyff}
+
+Originally, the fitness function was a monolithic collection of arbitrarily-defined constraints. Weight values were based on intuition alone. Appendix \ref{appendix-old-ff} (page \pageref{appendix-old-ff}) lists these constraints and their associated rewards and penalties.
+
+[early1,early2] show the output of this fitness function over a simple blues progression,
+with only basic (normally distributed) pitch mutation, random initialisation and single-point crossover.
+The output is consistently acceptable, but features too much repetition and not enough variation. At
+this point the genetic algorithm was rewritten to use a modular fitness function.
+
+\section{Testing and debugging}
+
+Before the GA could make any sense at all, several bugs had to be discovered, tracked down and
+fixed. The test approach consisted of several simple procedures:
+\begin{itemize}
+\item Trialling operations in a separate class to ensure correctness; e.g.\ checking that the
+distribution and range of previous history blocks for initial seeding is appropriate.
+\item Adding \tt{try}/\tt{catch} blocks around operations that might return array out of bounds
+or other errors. The \tt{catch} block halts the program and outputs information that explains how
+the array offset was calculated.
+\item Debug instrumentation was added around suspicious sections of code.
+\item Unnecessary features such as mutations, history seeding, and most fitness functions were
+disabled. Once the basic GA had been seen to work properly, features were enabled on a discretionary
+basis.
+\end{itemize}
+
+Several sections of code warranted more in-depth testing. With the \tt{MutationFunction} class,
+a sample musical phrase is run through each of the mutations in turn, with the results displayed
+so a human can verify their correctness. These test cases are implemented as
+static \tt{main} methods of the relevant class; running \tt{java MutationFunction} (in this case)
+will execute the tests for that class.
+
+General testing revealed several \emph{major} flaws in the code base. In some cases these flaws
+would have severely compromised the quality of the GA if not found, and thus a dedicated test plan
+turned out to be a prudent idea. A few examples follow:
+\begin{itemize}
+\item Converting a floating point fitness value (between 0 and 1) to an integer \emph{before} multiplying
+it by the weight. This results in the value being \emph{either} 0 or 1, drastically reducing the
+direction quality of the GA's random search. With a lower level of a granularity, the GA would take
+\emph{many} more iterations to reach an acceptable fitness value.
+\item Forgetting to remove a clause that returned a random fitness value if all weights summed to zero.
+The weight sum was no longer used but remained initialised at zero, causing random fitness values to
+be returned for \emph{all} evaluations and effectively reducing the GA to a random number generator.
+\item Specifying the wrong scale array caused all ``is this note in the current scale?'' lookups to be performed
+against the key of C rather than the current key, resulting in the key of C being used at all times.
+\end{itemize}
+
+\section{Genetic algorithm configuration: part one}
+
+To begin with, random scale initialisation and single point crossover were used. All mutations were disabled.
+The most important modules, \textbf{FmKey} and \textbf{FmRange} were enabled with weights 200 and 250 respectively;
+the acceptable octave range was set to C2--C7, slightly larger than the initialisation range of C3--C6, to allow for
+transposition when recycling old output.
+
+The chord progression \tt{C7 / F7 / G7 / C7} was used, as the blues scale makes it easier to produce acceptable
+output given its pentatonic basis. [keyrange1] shows the first output with these settings, and also demonstrates
+transposed repetition for bars 2 and 4. Two problems were also identified:
+\begin{itemize}
+\item Bars 2 and 4 are exact copies of bar 1 (after transposition), in spite of crossover over thousands of iterations. This was determined to be caused by a) \emph{elitism} preserving exact copies, b) near-identical fitness values for all members, and c) that the members copied via elitism were deterministically picked as the ``most fit'' due to their position in the population. When the fitness function becomes more complex this should not happen.
+\item The solo is ``cut short'' at the end. Rather than try to induce a suitable conclusion in the fitness function, a simple repeat of the last-played chord was added to the end; this wraps up the solo, but is not a perfect solution [keyrange2].
+\item The solo actually alternates between high and low octaves rapidly, creating an effect of two simultaneous melody lines. This is not a desirable property for fitness evaluation.
+\end{itemize}
+
+Modulo repetition, this output seems to resemble that of the original fitness function. This implies that many of the rules
+in the original fitness function had a limited or destructive effect on the output, and that any patterns or relationships found in the notes were conjured up by the human mind, as the output is in fact quite close to random noise. It therefore remains to improve this noise into something more meaningful.
+
+Generation via random chromatic notes converged very quickly to a maximum score for FmKey; members with chromatic notes are rapidly eschewed, making the method equivalent to ``random scale'' at this point in time. 1/f generation [oneoverf] seemed similar to the uniform distribution, but eliminated the low notes that created an impromptu counterpoint, solving the third issue above.
+
+\paragraph{Chaotic generation} The Standard Map generation was not heavily investigated, but it generated surprisingly advanced output without any evolution [chaotic0] \citep[as shown in][]{morris05}. Evolution introduced rhythmic complexity and repetition, but overall output tended to resemble that of the 1/f distribution [chaotic2000], which is not surprising given that GAs are designed to handle arbitrary initialisation seeds.
+
+To provide more tonality, a \textbf{FmChord} module was created to apply a bonus for each note belonging to the current chord. This has a side-effect of encouraging
+the seventh note on seventh chords played over a major scale [chord]. The module attempts to encourage 50\% chord notes per block.
+
+\paragraph{Elitism} The initial elitism value was set to 4, which means the four highest-fitness members of the population are transmitted to the next generation unaltered. The value of 4 was carefully considered: lower values seemed to lower average fitness values across the population, as the best individuals are lost and cannot propagate; higher values did not affect the mean but lowered their standard deviation, possibly limiting the variety of musical phrases as the ``best'' were duplicated too often.
+
+\subsection{Repetition}
+
+The initial method of encouraging the repetition of two- and three-note sequences yielded poor results. The average module score first hovered between 0.05 and 0.15 and converged quickly, most likely to due the difficulty of evolving repetition through single-point crossover. Uniform crossover proved to be too destructive, so double-point was chosen as a compromise; scores improved to around 0.2, and some structure was apparent [rep1].
+
+To encourage variation the ``normally distributed pitch shift'' mutation was enabled on children with probability $\frac{1}{2}$. The population size was increased to 64, with 4 elitism candidates, and the tournament selection pool was reduced from 4 to 3 to lower the pressure to select high fitness and prevent early convergence. The first output is shown in [rep2]: the repetition is now much more evident.
+
+An alternate module, \textbf{FmRepetition2} was created. This module scans the block for repetitions of \emph{arbitrary} length, assigning a score based the average semitone difference. This allows repetitions that are not exact, although they receive a disproportionately lower score. This can be seen in the first and last block of [reptwo1], the first output with the module enabled. Ultimately this module was used over \textbf{FmRepetition} as it was more likely to develop structure.
+
+\subsection{Expectancy}
+
+One problem with [reptwo1] is the occurrence of low and high notes played together. Although heard as a syncopated rhythm, it is not realistic for a pianist to jump around octaves like this. Expectancy should encourage intervals that we expect to hear in music, and therefore are those commonly played naturally by musicians.
+
+[exp75] shows the first output with \textbf{FmExpectancy2} enabled, default weightings, target expectancy of 75\%. The melodic contour is now far smoother, with ascending and descending lines that stay close to a local tonal centre. Bar 2 shows a partial repetition of bar 1 (transposed). [exp10] shows an output with target expectancy 10\%. Large intervals are evident, but perhaps due to the repetition module, there is still some structure and predictability in the piece. Conversly, [exp100] has a target expectancy of 100\% and seems constricted, not usually willing to travel more than a few notes from the root. Further experimentation confirmed that 75\% was an ideal medium.
+
+[exp75] has several issues: firstly, the complete lack of rhythm, which will be addressed later. Secondly, the large number of repeated adjacent pitches, as the proximity rule assigns the highest score to sequences of identical notes. There are several ways to fix this:
+
+\begin{enumerate}
+\item \emph{Reduce the proximity weighting.} This is undesirable as it leads to unnatural, large-interval phrases.
+\item \emph{Reduce the bonus for intervals of size zero.} Such intervals were given a score of 5 instead of 12; the first output can be seen in [expbonus]. It is now  devoid of repeated notes, but sometimes outputs have large intervals in them (octave or more) despite the weighting. Despite this, output is pleasing; [expbonus2] shows a nice descending scale line.
+\item \emph{Treat repeated notes as extensions to the first.} This is bad for several reasons: it makes true repeated notes impossible, and it allows a melodic fitness module to encourage rhythm. However, it can create an effect of ``intentional'' pausing [exptie] that \emph{might} be tied to the melody in a meaningful way, although some effort would be needed to make chords and notes coincide rather than staggering after one another.
+\end{enumerate}
+
+Method 2 was chosen as it delivers good results in general; method 3 may be useful if rhythmic constraints disappoint. Registral return caused too much three note repetition so its score was reduced to 4.0 (from 6.0); the registral direction effect 
+was perhaps too prominent but scale runs are statistically less likely than other phrases so it is important to encourage them. [expfinal] shows the first output with the finalised weightings.
+
+\paragraph{FmExpectancy} The original FmExpectancy model did not perform well. It was determined that the revised model \citep{schellenberg96} is much more explicit in its specification, while Narmour's is rather vague. Due to this, the author invented several weighting values and score multipliers that may need careful tweaking before good output can be generated with FmExpectancy. As FmExpectancy2 already delivers satisfactory results, the original model will no longer be considered.
+
+\subsection{Fitness analysis}
+
+Figures \ref{fig-fitness1} and \ref{fig-modules1} show the fitness statistics for [stat1], a two-bar improvisation over D$\sharp$m7$\flat$5. This information was logged in order to see if any part of the current module configuration needed addressing.
+
+\fig{fitness1}{Average fitness for population of [stat1]}
+\fig{modules1}{Stacked line graph of module scores for [stat1]}
+
+Looking at the modules, \textbf{FmRepetition2} takes the longest to converge, but all modules reach a fairly static level within 200 iterations. Nonetheless, the average fitness graph clearly shows a steady but slow improvement of fitness (from 720 to 740) over the remaining 800 generations. \textbf{FmKey} and \textbf{FmChord} converge fast and stay roughly constant. This is a good thing, because 100\% on-key notes is not desirable,
+and also because mutation and crossover are continually introducing off-key notes into the population. \textbf{FmRange} is constant at 1.0, which is highly desirable.
+
+Like repetition, \textbf{FmExpectancy2} converges to a steady state and does not drop. Although the score then improves extremely slowly, it has already reached a realistic maximum; given that the score is an \emph{average} over the entire population, and that low-fitness specimens are often selected for genetic diversity and to prevent early convergence on local maxima, this is to be expected.
+
+\fig{highfit1}{Average and best fitness for population of [stat2]}
+
+The majority of tested outputs peak at 80\%--90\% fitness, reaching a plateau after a few hundred generations, and this is echoed in the average fitness graph. This curve can again be explained by taking low-fitness members into account, but the purpose of these members is to increase the variety of the population and ultimately lead to more high-fitness search paths. But does it? Figure \ref{fig-highfit1} shows the highest fitness of each generation for [stat2], a solo over C7. Again, the average fitness rises to 740. The \emph{highest} fitness of each generation, due to elitism, jumps up in steps, finally reaching a fitness of 770 at generation 723.
+
+A subsequent test with 10,000 generations yielded a best fitness of 772 after just 2,100 steps (at 1,000 iterations the score was 767). Despite the small improvement, future tests were set to use 2,000 iterations instead of 1,000. However, this plateau is best defeated by adding more fitness functions, in order to diversify the ``fitness landscape'', open up more possibilities and prevent convergence on local maxima (as fewer of them will fit the new criteria).
+
+\section{Post-pass}
+
+The initial post-pass lengthens all notes to fill any subsequent rests. This creates an effect that, due to the piano tone, is neither staccato nor legato but rather a mix of the two. The pass also applies a light velocity accent to the first note of each bar and a random, almost imperceptible timing offset is added to every note in an attempt to remove the ``mechanical'' impression one might get from hearing perfect timing. However, the velocity distribution of the piece was still quite flat, and this made the output less interesting. Rather than add velocity to the fitness function (and vastly increase the search space), it was decided to apply velocity curves during the post-pass stage. A general description of the algorithm follows:
+
+\begin{enumerate}
+\item When encountering a new ``melodic fragment'', reset the velocity to a normally distributed value of mean 90 and standard deviation 20. A melodic fragment begins after a note with particularly long duration (i.e.\ a rest), or a note that is more than an octave higher or lower than the preceding note.
+\item For each note in the fragment, perform a random walk to determine velocity. The shift amount and chance of walk direction changing is tied to the duration of the note; longer durations cause larger shifts and a higher probability of change. If the velocity exits the range 60--120, reflect it back into the range and reverse the walk direction.
+\end{enumerate}
+
+This simple algorithm is designed to encourage a base velocity of 90 (mezzo forte), with occasionally deviating velocity within a melodic fragment, and possibly drastically different velocities between fragments. It does not try to check for ``clever'' times to change velocity, but rather aims to sound more ``human'' than if the velocity were simply constant or completely random. The initial range of velocity 60--120 was far too quiet, and later changed to 80--120: although restrictive, the change in volume is perceptible and aids realism [countdown]. Combined with a complex chord progression, the output is occasionally similar to a human performance.
+
+Jazz players usually ``swing'' their notes (see Introduction). To achieve this effect, the timings of notes were adjusted while in the 16th note format as described in section \ref{des-noterep} (page \pageref{des-noterep}). For each set of four sixteenth notes, a duration filter is applied, e.g.\ $[0.4, 0.3, 0.2, 0.1] \times 4.0 \times [note\ durations]$. The durations must sum to 1, so the total duration of the set is the same. But the first eighth note of the set will have an augmented length, while the latter will be diminished.
+
+Experimentation revealed that aggressive swings sound unnatural as they are applied unilaterally and without consideration of the rhythm already present. Lighter swings, where less emphasis is applied to the first eighth note, made the output sound more authentic with relatively little effort [swing].
+
+\section{Genetic algorithm configuration: part two}
+
+\subsection{Rhythm}
+
+\textbf{FmRhythm} is a module that encourages notes on beat positions, and durations that are of a sensible and consistent length. Enabling the module immediately produced a complex but restrained rhythm that sounded more pleasing than the previous quasi-random rhythmic output. Unfortunately, repeated note sequences -- due to either previous block seeding or crossover -- generally contain a fitter rhythm than notes that are not copied. This encourages repetition quite strongly, as can be seen in the output of [rhythm1]. Subsequent outputs did not duplicate this, so it could have been a glitch; [rhythm2] shows a combination of consistent rhythm and appropriate pauses between sequences of notes. However, output over complex chord progressions seems to suffer [rhythm3], perhaps because the now harder to fulfill fitness modules are being ignored in favour of satisfying rhythm.
+
+One solution is to employ the \textbf{FmNumNotes} module, which encourages a specific number of notes in each phrase. If the target is 12 notes, for example, a range of 8--16 notes will not be heavily punished, but fewer will result in a very low fitness score. This creates more interesting rhythms [rhythm4] but also has its drawbacks. Previously generated blocks tend to satisfy this function fairly heavily, and so end up being reproduced verbatim as those subjected to crossover end up with more or less notes. And for phrases with more chords, the pauses do not work well with the busier sound [rhythm5]: to fix this, the FmNumNotes scales its target to the number of chords in the current block, to ensure that chords get at least some melodic activity [rhythm5b]. This also sustains interest in longer solos which have blocks with varying numbers of chords [longsolo].
+
+Regardless, it is important to note that the fitness function \emph{can} be customised to produce output more suited to the desired style and progression. With the addition of rhythm, the GA now outputs pieces with the melodic quality of [countdown], but with a much more regular timing. The emphasis on power-of-two beats and notes on beat boundaries encourages a regular ``rhythmic skeleton'' around which note durations can shrink or extend to create variation.
+
+\paragraph{FmRhythmRep} The FmRhythmRep module checks for two or three note rhythm repetition, but such rhythm is already generated by FmRhythm and history seeding, so no experimentation was performed.
+
+\subsection{Scales}
+\label{test-scales}
+
+The expectancy module encourages small intervals, but does not heavily specify their direction (Section \ref{dev-exp2}, page \pageref{dev-exp2}). This can prevent the typical runs up and down the scale commonly played by jazz musicians. Enabled all the time, the output seems to favour such runs more often, leading to sustained ascending or descending passages. Due to the relative difficulty of evolving these phrases, other fitness module scores suffer [scales1] and the runs are not particularly apparent in the output. To fix this, the FmScales score was set to alternate between zero and a particularly high score (250) roughly half of the time. One output with these settings is [scales2]: the output starts off routinely, with good repetition. Just when the solo is in danger of repeating itself too often, the FmScales score jumps to 250 in the last bar, and the fitness criteria changes. Previous blocks are no longer good candidates, and a different ending is generated instead.
+
+Many outputs, including [scales2], did not feature scales enough to justify the reduced attention given to the other modules. But changing fitness weights \emph{during} generation is a promising idea, both for introducing variation in the solo, and to stop exact copies of previous blocks from appearing in the output too often. Ultimately FmScales was enabled with a fixed importance of 100, and this leads to some realistic melody lines [scales3].
+
+\section{Mutation}
+
+\cite{biles94} proposed the use of ``musically meaningful mutations'' in his seminal GenJam paper. These mutations attempt to speed up evolution by making the output more musically useful: shifting notes forward or backward to cope with timing issues; re-ordering pitches to create ascending or descending lines. To begin with \jg\ was configured with the same settings as those used for [scales3]. Mutations were then enabled to see their effect, if any, on the output.
+
+Adding the ``restify'' and ``derestify'' mutations compensated for the lack of rhythmic mutation outside of standard crossover [restify]. Rhythms now focused on eighth notes more strongly, there was virtually no syncopation, but the output suffered for it. Looking at the statistics, the non-restify generation has an almost unchanging average FmRhythm score of 0.62, most likely because no meaningful rhythm improvements can result from crossover. The restify generation has a highly-variable distribution with average 0.7, which improves slowly over time. This indicated that the mutations should be enabled, but that the FmRhythm module was incorrectly specified. Surely enough, the module was encouraging quarter notes instead of eighth notes. After some adjustments the FmRhythm score rose to 0.9 and produced much more natural-sounding music [restify2].
+
+Conversely, the ``Sort pitches ascending/descending'' lead to almost exclusively ascending or descending passages in the output. The fitness functions are designed to encourage such lines when given a base of mostly random pitches; when confronted with pre-sorted melody lines they tend to award a fantastically high score without checking if the melodic contour is varied enough. To address this, the mutations were simply turned off.
+
+Reversing or rotating pitches or phrases did not seem to have an effect, other than being quite destructive to the average score for FmRepetition2. Similarly, any children given the transposition mutation were discarded almost immediately, because most of their notes were no longer consonant. This was evidenced by the average FmKey and FmChord scores dropping by \~{}5\%, and the discarded children causing the evolution rate to drop. The octave transposition was as damaging as the sort mutations, causing the melody to jump up and down nonsensically.
+
+Currently, only the restify, derestify and pitch change mutations are enabled. Less primitive, ``musically meaningful'' mutations seem to propagate too far into the population, or have no overall effect after thousands of generations. Therefore \jg\ continues the adopt the traditional paradigm of keeping knowledge and search direction in the fitness function, and making the mutations ``dumb''.
+
+\subsection{Fitness analysis}
+
+One more generation was run with the finalised settings over a standard blues progression: [stat3]
+
+\fig{fitness2}{Average and best fitness for population of [stat3]}
+
+The fitness is similar to the other two samples in that it rises quickly then stabilises, but due to the increased ``fitness landscape'' there is more opportunity for the score to rise. Two notable crossovers or mutations bring about sharp rises in the best fitness of the population, and we can also see that the average fitness is highly correlated to the best as elitism propagates the better individuals to others. The rises also indicate that further generations will yield even higher fitness values.
+
+\fig{modules2}{Stacked line graph of module scores for [stat3]}
+
+The line graph shows that many of the modules, such as FmRepetition2, FmKey and FmChord have roughly static values. This is likely because low-scoring populations can be very quickly mutated to be high-scoring, unlike rhythm or expectancy for example\footnote{FmRepetition2 awards high scores for phrases a few semitones away from being truly repeating.}. Major score gains come mainly from sudden jumps in individual module scores, such FmScales, FmExpectancy2 and especially FmRepetition2, which starts at 0.5 and eventually reaches almost 0.8 after several jumps.
+
+This reveals a flaw in the fitness function itself: the problem of \emph{direction} in the GA's random search. Modules like FmRepetition2 and FmKey, which award high scores for \emph{near}-matches, act as a granular direction for the search: individuals close to a perfect score will continue to evolve -- where mutations will improve their score further -- while those whose score is decreasing due to bad mutation/crossover will be discarded. The score of all of these modules hovers between 0.9 and 1.0 throughout. In this respect, the GA behaves like a hill-climbing algorithm.
+
+Modules like FmScales and FmRhythm award high scores to phrases that are good, and therefore would be ruined by further mutation/crossover, and low scores to phrases that are bad, and have very little chance of being mutated/evolved into something better. This is due to the nature of what the modules evaluate. The result is that the GA has no method of getting from low fitness to high fitness like it does with the ``semitone difference'' of FmRepetition2. Instead it waits for an unlikely evolution that produces a very high-scoring candidate, and this change is quickly spread to the rest of the population. The result is a mostly static score graph with occasional jumps.
+
+The conclusion is that fitness modules need to be \emph{directed}, offering a score that is tied to how viable the individual is for future evolution towards a high score, rather than just how good it happens to be \emph{at present}. This is a difficult problem, and something that may be worth investigating in the future.

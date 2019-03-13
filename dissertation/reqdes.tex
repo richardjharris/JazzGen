@@ -1,0 +1,363 @@
+\chapter{Requirements and Design}
+\label{chap-design}
+
+\qq{When people ask me how is it I was a musician, I facetiously say that I'm a firm believer in reincarnation and in a previous life I was Johann Sebastian Bach's guide dog.}{George Shearing}
+
+The algorithmic composition system, hereafter titled \jg, will use genetic algorithms
+to produce jazz improvisations. But the choice of algorithm is not the only consideration
+when building such a system.
+
+\section{Initial considerations}
+
+There are a number of importance choices to be made before design work can begin.
+
+\subsection{Output form}
+
+Algorithmic composition systems are typically classified into one of three classes:
+
+\begin{description}
+\item[Precomputed] The entire musical output is computed at once.
+\item[Real time] The output is computed iteratively at a rate faster or equal to the rate
+ at which the output will be played.
+\item[Linear time] The output is computed iteratively but not necessarily at a rate
+fast enough to play the output simultaneously.
+\end{description}
+
+By splitting the musical output into blocks and running the genetic algorithm one block
+at a time, real-time output can be achieved (with a small latency). However, such algorithms
+typically require a large amount of computation time due to both the complexity of the
+fitness function and the number of generations required to achieve acceptable output.
+
+\jg\ will be a precomputed system: it will perform minor precomputations based on the supplied
+chord progression, generate the output one block at a time, then convert it to MIDI\footnote{Musical Instrument Digital Interface: a protocol for sending musical events to other devices, in this case a software synthesizer.}
+and play it. It is anticipated that the system could be converted to linear time with
+the slight complication of developing a suitable buffered MIDI playback library.
+
+%new page
+\cite{morris05} describes two further distinguishing classes of generator:
+
+\begin{enumerate}
+	\item The program produces a different improvisation each time it is executed.
+	\item The program produces a deterministic piece depending on certain fixed parameters.
+\end{enumerate}
+
+Genetic algorithms can trivially be made deterministic via the use of a fixed random seed. The choice comes down to whether the system will be used to compose a piece (Morris, the works of Cope, Xenakis and other algorithm composers) or as a composition \emph{tool} that will continually produce new musical ideas. The inherent unpredictability of GAs (crossover, mutation, and initialisation) lends itself to the latter. Some parameters will be fixed by the user, which serves to constrain the possibility space a little, but ultimately the output produced should be different with each execution.
+
+Additional bass and drum tracks will be composed as an accompaniment to the improvised piano solo. Since \jg\ is precomputed, the problem of having to generate several parts simultaneously is absolved, and they will instead be produced sequentially and combined into one MIDI stream. This offers the latter tracks a chance to be reactive to the solo in a more free form way; the bass can `cheat' by playing solo notes in unison, and so on. While obviously not possible in a true improvisation context, anything that makes the output more aesthetically pleasing should be encouraged.
+
+\subsection{Chord progression}
+
+Rather than being generated with the solo, the chord progression will be dictated by the user. This allows improvisations over a particular jazz standard or the user's own choice of progression, assisting in composition or comparison with real improvisations over a similar set of changes\footnote{Jazz term for the chord progression}. Chord progression generation is a complex subject in itself, and is deemed to be outside the scope of this project.
+
+The system will parse a user-supplied chord progression typed in a human-friendly notation, deduce chord inversions and scales to use, and store this data in a manner that can be easily accessed by the fitness functions. A ``repeat'' option may be offered, so the user can conveniently input a set of chords and have this set repeated a number of times to form the full progression.
+
+The initial system should support a reasonable number of chords and scales (exact details are in the requirements): ``reasonable'' is defined via the author's musical experience or testing needs. Each chord should map to at least one scale suitable for playing over that chord, so the tonality of the solo can be assessed.
+
+\subsection{Note representation}
+\label{des-noterep}
+
+The MIDI specification defines notes as pitches numbed from 0 to 127, where 0 represents C-1 (an octave below C0) and 127 represents G9. \jg\ represents pitches in the exact same way -- not just for simplicity, but also to allow flexibility when generating music. While there are only 88 notes on a typical piano, the system may be used for other purposes in the future, where the extreme notes may become useful; other tuning systems, such as microtonal systems, would utilise these pitch numbers or perhaps the values 0--254.
+
+\fig{notearray}{Pitch array representation}
+
+One pitch value, -1, is reserved to mean ``Rest''. A musical phrase is stored as an array of such pitches: either notes from the value of 0-127 or the Rest value (Figure \ref{fig-notearray}). This encoding ignores velocity and note duration entirely. The rationale for this is twofold: first, it reduces the search space, and therefore the complexity of the fitness function, mutation and crossover routines. Secondly, it relieves the GA from dealing directly with notes that begin or end in a different block to the one currently being evolved, and the mechanics of splitting them up. Mutations and crossovers will simply shuffle rests around, where they will randomly extend or contract the durations of other notes. Rhythm evaluation will work over multiple concatenated blocks, but the first and last group of rests will be ignored as they are of an indeterminate length.
+
+The note resolution is important: the initial configuration will be that of 32 ``notes'' to a two-bar phrase, equating to a maximum resolution of 16\th\ notes (semiquavers). This is thought to be enough to handle most tempi of music. The genetic algorithm will operate over these two-bar ``phrases'' individually: each phrase can have an arbitrary sequence of chords in the background (typically two or three). The chords are defined and added separately to the piece, as the solo itself is monophonic; handling multiple notes played at once adds orders of magnitude to the search space, and will not be considered.
+
+Some systems choose to limit their search space by encoding only notes within the current scale. This approach is difficult to manage, especially when multiple chords are present within one GA output. Additionally, it drastically reduces musical possibilities: while the fitness function will encourage notes from the current scale, this vote can be overcome by high fitness scores in other areas, such as repetition, a smooth melodic contour, or ideal expectancy. There are several reasons why this is important:
+
+\begin{itemize}
+\item Encoding only notes from the current scale would eliminate unusual and novel musical outputs resulting from dissonance, chromatic passing tones, etc.
+\item There are often multiple reasonable scales for a given chord, so the choice of which scale to use is ambiguous and should not be heavily enforced.
+\item Often the previous blocks of output (which the fitness function is able to evaluate) is a better arbiter of which notes to use than an arbitrary scale choice.
+\end{itemize}
+
+Thus, the absolute values 0--127 are used, and all chromatic notes are included.
+
+\subsubsection{Post-pass expression}
+
+In this form, the notes would be played staccato at a fixed velocity. To make the piece sound less mechanical, a post-page stage will shape the output in a number of ways:
+
+\begin{itemize}
+	\item Extend notes to cover some of the rest period that follows them.
+	\item Move note start offsets a small, random distance to reduce perception of a ``machine pianist''.
+	\item Apply velocity curves around important parts of the phrase.
+	\item Apply \emph{tempo rubato}\footnote{Slightly slowing down or speeding up the solo with respect to the accompaniment. Pianists often employ this technique around important parts of a piece.} to these sections to add emotion \citep{todd89}.
+\end{itemize}
+
+The problem is deciding ``what is important'' when applying these techniques, and this will be addressed during the development stage.
+
+\subsection{Accompaniment}
+
+The improvisation alone may be functionally complete, but it will not be attractive to the ears without harmonic and rhythmic context. Thus, a traditional ``walking bass line'' and percussion should accompany the solo. This backing will be simplistic; developing a realistic and reactive accompaniment is not the primary focus of this project.
+
+The walking bass will echo the root note whenever a chord is played, then proceed to randomly walk up and down the notes of the current chord. This avoids harmonic conflict with the solo and the chord itself. The pattern will be 8\th\ notes, played an octave lower than the piano chords.
+
+The percussion will at first be a simple static drum pattern. If there is time, it will be extended to mimic the rhythm and dynamics of the solo.
+
+\section{The genetic algorithm}
+
+The genetic algorithm will be composed of several stages: initialisation, fitness evaluation, selection, crossover and mutation. It will operate over ``blocks'' or ``phrases'' of input, roughly two bars long and composed of 32 sixteenth notes in the format outlined on page \pageref{fig-notearray}.
+
+\subsection{Initialisation}
+
+The algorithm requires an initial population of candidates. These candidates can be completely random, as they will soon be changed by mutation, crossover and breeding (discarding the least fit individuals). However, using candidates that are musically interesting and satisfy \emph{some} of the constraints in the fitness function should lead to faster evolution to an acceptable level of fitness. Several ideas have been considered:
+
+\begin{itemize}
+\item Using notes from the correct scale and key, instead of purely random notes.
+\item Limiting notes to a small set of octaves (e.g.\ the middle four of an 88-key piano).
+\item Using a more ``interesting'' source, such as 1/f noise or chaotic functions.
+\end{itemize}
+
+Due to this, the initialisation module should be abstracted out from the algorithm, so it can be replaced with a new one at runtime via the user interface. It is possible that some of the generation methods may need options, such as maximum or minimum octave, input data for the chaotic map, etc. Each module may have a facility to present options to the user.
+
+\cite{grachten01} mentions that music with form should revolve around central motifs. One option is to generate a motif and use it as a basis for composition. When improvising, a more natural route is to use previously-played music as the motif. To realise this ``history seeding'', some initialisers will be copies of blocks previously generated in the same solo, with more recent blocks preferred so that the repetition is more evident. If necessary, the repeating block may be transposed to a new key to reflect the current chord. The probability of using a previous block as a seed, and the number of previous blocks to consider, should be modifiable by the user.
+
+\subsection{Fitness function} 
+\label{ss-des-fitfunc}
+
+The fitness function is clearly the most important part of the algorithm. It provides direction to the algorithm as it traverses the musical search space. If the mutation, initialisation or crossover methods are flawed, the search will merely take more iterations before finding a high-fitness individual. If the fitness function is flawed, the definition of ``fit'' is wrong and the results are meaningless.
+
+\cite{grachten01} introduces three major constraints that should be satisfied by a jazz improvisation:
+
+	\begin{description}
+		\item[tonality] the improvisation must be tonal to the key of the music, and thus be predominantly consonant;
+		\item[continuity] the melodic contour of the improvisation must be mostly smooth; large intervals are sparingly used and registral direction is not too frequently reversed;
+		\item[structure] the improvisation should not be merely be a sequence of non-related notes; in some way, interrelated groups of notes should be identifiable.
+	\end{description}
+	
+In addition, \jg\ aims to model expectancy \citep{narmour90,narmour92}, which will aid the evaluation of all three tenets. While the first two are simple to qualify, the third is not as clear-cut; \jg\ will attempt to measure structure by evaluating rhythmic consistency, note placement, rhythm repetition, and common motifs such as notes travelling up or down the scale. It is also possible that common ``licks'', or musical patterns, could be encouraged or placed directly into the improvisation. Finally, there are administrative checks, such as notes falling too far outside the ``reasonable'' piano range.
+
+Initial development featured a single fitness function with arbitrary, often ill-considered fitness scores. The musical results were surprisingly acceptable, but it quickly became clear that a single function would grow too large and become unwieldy and inconsistent. To combat this, the fitness function will instead be formed from several \emph{fitness modules}, each responsible for a different aspect of evaluation. The overall fitness score $\bar{x}$ can then be calculated as a \emph{weighted summation}: \[ \bar{x} = \left\lfloor\, \sum_{i=1}^n w_i x_i + 0.5 \right\rfloor \] where for each fitness module $i$ there exists a score $x_i \in [0,1]$ and a weighting factor $w_i \geq 0$. The user interface should allow the user to adjust fitness module weights or disable the module entirely, which is equivalent to setting $w_i = 0$. We then add 0.5 to the score and floor it to yield a rounded integer result suitable for comparison against other scores.
+
+The fitness evaluation will be performed over the current block \emph{plus} the previous $n$ bars of music, where $n = 1$ initially, but can be changed by the user. This provides a context to ensure the new block smoothly connects with the old one from both rhythmic and melodic viewpoints. It is possible that $n$ could be increased to cover the entire output for evaluations of higher-level form, etc.\ -- fitness modules could decide how many blocks to evaluate on an individual basis -- but this would be an extension to the project if time allows.
+
+It is important that fitness scores have a linear fitness $\to$ value distribution. For example, modules should not be providing high fitness scores to 90\% of the population when others are providing those scores to only 10\%. Otherwise, modules may have too little or too large an influence on the overall score.
+
+\subsection{Selection}
+
+After evaluating the fitness of each candidate, the fittest candidates must be \emph{selected} for breeding (crossover and mutation). The simple approach is to to pick the $X$ fittest individuals of the population, but this can cause premature convergence on poor solutions; traditionally, population diversity is encouraged by occasionally choosing less fit individuals. This also compensates for deficiencies in the fitness function, which is crucial in creative domains.
+
+\textbf{Tournament selection} is a popular selection algorithm. Given a tournament size $k$, choose $k$ individuals from the population and select the one with the highest fitness. Repeat until no more selections are needed. If $k=1$, this is equivalent to random selection, but as $k$ increases, the pressure to choose high-fitness individuals rises. \cite{miller96} write that ``[tournament selection] is simple to code, easy to implement \ldots robust in the presence of noise, and has adjustable selection pressure.'' Given these qualities, tournament selection will be the only implemented selection method; the tournament size will be a user-configurable option.
+
+\subsection{Reproduction}
+\label{ss-reproduction}
+
+Reproduction of fit individuals typically involves \emph{crossover} (merging two parents into one child) and \emph{mutation} (modifying the child slightly). The purposes, as outlined by \cite{goldberg02}, are to ``innovate'' by combining musical phrases, and to ``improve'' (at least some of the time) by making minor modifications to the result; these two disparate aims are simultaneously achieved by reproduction. The overall aim is to increase the average fitness of the population with each subsequent generation.
+
+\subsubsection{Crossover}
+
+For simplicity, crossover will occur over byte arrays of notes as defined above: this causes both note duration, as well as position, to change when crossover occurs. Several possible methods are available:
+
+\begin{description}
+\item[One-point crossover] Beginning of child is taken from first parent, and the rest from the second (the exact proportions are random).
+\item[Two-point crossover] The beginning and end of the child are taken from the first parent, and the middle from the second.
+\item[Uniform] Notes are randomly copied from the first or second parent, forming an average of $L/2$ crossover points (where $L = $ length of child)
+\item[Random mask] Uses a mask to determine whether each byte comes from the first or second parent. Each mask bit has a set probability $p$ of being a negation of the previous (rather than equal): if $p = \frac{1}{2}$, it is equivalent to uniform crossover. $p > \frac{1}{2}$ creates more crossover points, and $p < \frac{1}{2}$ creates less.
+\item[Average] Pitches from each parent are merged together; if one parent has a note and the other has a rest, the rest is chosen with probability $p$.
+\end{description}
+
+Current research indicates uniform crossover is best for large search spaces \citep{sywerda89,spears91}; it creates the most diversification. Unfortunately, it also corrupts perfectly good musical phrases in a much more drastic way than standard one- or two-point crossover, which more closely resembles the human process of combining phrases. This can be partially mitigated with the use of \emph{elitism}, where a set number of fit individuals are copied over to the new generation completely untouched. Nonetheless, it is not possible to settle on just one crossover method; several should be implemented, with an option to select which one is used. This will allow direct comparison of methods and easy examination of their effect on the output.
+
+Note that some methods, such as one-point crossover, create two children. The uniform crossover only creates one. For simplicity, all methods are assumed to produce only one child, and new parents will be continually selected (possibly more than once) until the necessary number of children have been produced.
+
+\subsubsection{Mutation}
+
+Mutation is employed for the same reasons that weaker individuals are allowed into the next generation; without introducing noise, the algorithm may quickly converge on a local optimum and slow down or stop evolving entirely. Mutation and low-fitness candidates ensure that there are always more possibilities and directions for the search. Traditionally, mutation is performed by randomly changing bits in the candidate value. Since \jg's value is a musical phrase, it makes more sense to randomly adjust pitches in the phrase, and introduce or remove rests. The conventional wisdom is that mutation should be ``dumb'' and serve only to blindly expand the search space.
+
+\cite{biles94} diverged from this viewpoint by introducing ``musically meaningful mutation'': mutations existed to reverse and rotate notes, invert pitch values, transpose or sort notes ascending/descending. The aim is to create ``not just new, but better'' offspring. It is easy to see that sorting notes could give rise to ascending or descending melodic lines that would rarely be generated by random mutation alone. \jg\ should expand on this by offering a large range of operations, allowing the user to select which ones should be used; each candidate will be mutated with a random operation from the set of those available. The requirements detail the full list of mutations.
+
+\subsection{Termination}
+
+The most common termination conditions are:
+
+\begin{itemize}
+\item Maximum fitness exceeds minimum bound
+\item Fixed number of generations reached
+\item Time limit reached
+\item Maximum fitness is reaching or has reached a plateau
+\item Manual inspection
+\item Combinations of the above
+\end{itemize}
+
+The simplest to implement, and least prone to complication, is a fixed number of generations. \jg\ will define a maximum number of generations, which can then be changed according to the user's need for quality vs.\ the user's patience/available time.
+
+After the algorithm has been finalised, it would be useful to examine fitness scores and see if they plateau regularly (without cycling) or reach a certain minimum value assuredly enough to warrant additional termination conditions. Unfortunately, the fitness value is dependent on the number and the nature of the fitness modules enabled, making this type of analysis difficult.
+
+\section{User interface}
+
+Aside from building an algorithmic improvisation system, it is important to be able to experiment with settings and turn on or off various features of the algorithm. This being so, a large amount of effort will be spent constructing a user interface that facilitates quick and easy adjustment of GA settings, input of the chord progression, export to Lilypond, MIDI etc. Ideally these settings will be saved when the application is closed, and restored on start-up. It may also be convenient to allow saving and loading of settings via arbitrary files, enabling the management of multiple generation ``profiles''.
+
+The chord progression, as mentioned earlier, should be input via a human-friendly format such as \texttt{Dm7 / C\#7}, and parsed into the appropriate data structure. If there are errors in the progression, such as non-existent chords or note names, they should be detected and displayed to the user. It would be useful to have the option of repeating the chord progression a set number of times to lengthen the improvisation. The tempo and meter of the piece may also be modifiable.
+
+The design of the user interface is not set in stone but it should contain the following main sections, most likely arranged in tabs:
+
+\begin{description}
+\item[Fitness functions] A list of available fitness modules will be displayed. The user will be able to enable or disable modules, set their relative importance (weighting), and change module-specific options.
+\item[Genetic algorithm] Contains general options, such as population size, maximum iterations, chance of mutation/crossover, and tournament size. Also determines how many previous blocks to use in fitness evaluation/initialisation.
+\item[Mutation] The user should be able to toggle mutation methods on or off, and possibly modify method-specific options.
+\item[Initialisation] The user should be able to select an initialisation method and modify method-specific options.
+\item[Crossover] The user should be able to select a crossover method, and modify method-specific options.
+\end{description}
+
+The top of the interface will contain the inputs for the chord progression, repeat count, tempo and meter. The bottom will contain buttons that trigger various actions: generate the output, play it via a suitable MIDI device, save the piece in SMF format\footnote{Standard Midi File, the format used for \tt{.mid} files.}, or convert to Lilypond notation.
+
+A second set of buttons deals with administrative tasks: load or save options to a file (if supported), and a \emph{Close} button to exit the application.
+
+\section{Development environment}
+
+To build \jg\ in a reasonable time, it is critical that a suitable music generation infrastructure be used to avoid unnecessary work in fields such as sound synthesis, MIDI output or user interface library programming. This work is instead performed by several tools:
+
+\subsection{The Java programming language}
+
+Linear time or precomputed systems do not place any strong requirements on generation speed. Nevertheless, if the output takes five minutes to produce, it is going to be very difficult to experiment with GA parameters and compare results. Initial development of \jg\ in the Python language proved to be too slow, taking several minutes to execute a few hundred iterations. Despite Java's use of intermediate bytecode, it is a much less dynamic language and many virtual machines employ Just-In-Time compilation to boost the speed further. With the use of primitives and arrays rather than boxed objects or linked lists, \jg\ is able to run through thousands of iterations in less than a minute.
+
+Java provides automatic memory management and garbage collection, higher-level data structures, and most importantly the Swing user interface library, which the author is familiar with. Despite Java's verbosity, the author was able to achieve rapid iterative development and, in particular, build up a full user interface for the system quite quickly.
+
+Higher-level interpreted languages would allow even faster development, as they forego compilation and add the ability to modify code and fully inspect data structures at run-time. Unfortunately, these comforts result in extremely poor performance for computation-heavy applications.
+
+\subsection{jMusic}
+
+Java also offers a very capable music manipulation library known as jMusic. jMusic allows the user to build up \emph{parts} from sequences of notes and \emph{scores} from parts, then convert those scores to SMF (Standard MIDI File) format, play the file via the cross-platform JavaSound library, or even write the score out in CPN (common-practice notation). In particular, it automatically manages the combination of several simultaneous parts (drum, bass, piano) and provides convenience methods and constants for note names, durations and velocities.
+
+\subsection{GNU Lilypond}
+
+Unfortunately, jMusic's CPN output is not extensive enough for full scores and chords at this time. Instead, the GNU Lilypond layout engine will be used. It is a fairly simple matter to convert a musical score to Lilypond notation, which can then be converted into a professional-looking PDF (Portable Document Format) file.
+
+\subsection{MIDI}
+
+The Musical Instrument Digital Interface, or MIDI, is an industry-standard protocol that expresses music as a series of `event messages', controlling each note's pitch, tempo, vibrato and other settings. While widespread, MIDI is only capable of defining the placing and characteristics of musical notes; the events must be passed to a synthesizer, sampler or other application to generate the final sound. Writing an application that outputs MIDI is relatively easy, as almost every common programming language has a suitable library. MIDI data can be written to a file, or more commonly sent directly to another device (for example, a synthesizer connected via a MIDI port, or a virtual instrument running on the same computer). This allows the user to select suitable sounds for each musical `part', but also to change these sounds at any time.
+
+Unfortunately, MIDI has remained relatively unchanged since its introduction in 1983, and the protocol is somewhat limited; the 12-pitch per octave equal temperament tuning system is assumed, and the user is unable to have full control over the timbral qualities of the sound produced. Regardless of this, MIDI seems sufficiently capable of representing the sort of jazz music a program is likely to generate. MIDI can also be stored to file and played later via any capable device; the jMusic library can output MIDI in both forms.
+
+\newpage
+\section{Requirements}
+\label{reqs}
+
+The requirements define and constrain the basic scope of the project, and reiterate the design considerations. Requirement priority is indicated by the use of the words \emph{must}, \emph{should} and \emph{may}.
+
+\subsection{Composition}
+
+\begin{enumerate}
+	\item The system must accept a user-supplied chord progression and generate a jazz improvisation that plays over this progression.
+	\item The improvisation should satisfy the three major constraints according to \cite{grachten01}: tonality, continuity, structure.
+	\item A post-pass stage will apply dynamics, note length extension and other humanising factors.
+	\item The quality of the improvisation should be made as high as reasonably possible in the time available.
+	\item This improvisation should be accompanied with a walking bass line and/or percussion.
+    \item The system should support multiple output formats.
+    \begin{enumerate}
+    	\item The system should be able to play the output over a suitable MIDI device in real-time, after composition is complete.
+    	\item The system should be able to save the output to a Standard Midi Format (SMF) file of the user's choosing.
+    	\item The system may be able to export the output to Lilypond score notation format suitable for conversion to PDF.
+    \end{enumerate}
+    \item The generation should complete in a reasonable amount of time: fast enough that iterative development and experimentation is possible.
+\end{enumerate}
+
+\subsection{Genetic algorithm}
+
+\begin{enumerate}[resume]
+	\item The genetic algorithm must be initialised with a seed population.
+	\begin{enumerate}
+		\item The initial method must be ``random'': purely random notes with random durations.
+		\item Previous phrases in the output should also be used as seeds. These phrases may be transposed to the correct key according to the currently playing chord.
+		\item Other sources of music generation, such as 1/f distributions, normal distributions, or chaotic systems, may be used.
+		\item There may be multiple methods, of which the user can select one at runtime.
+		\item Methods may be able to present module-specific options to the user.
+	\end{enumerate}
+	\item The fitness of an algorithm will be determined via a weighted average of several fitness ``modules'', each evaluating a different aspect of the music.
+	\begin{enumerate}
+		\item Each module must have an ``enabled'' attribute specifying whether it will factor into the fitness evaluation. Disable modules have an effective weight of zero.
+		\item Each module must have an ``importance'' value specifying its weight in the average. The default is 100, with reasonable values spread from 0--200.
+		\item Each module must accept a musical phrase \emph{of arbitrary length} and return a fitness value $\in [0,1]$ in floating point format.
+		\begin{enumerate}
+			\item Modules may only evaluate the last \emph{n} units of the input phrase when evaluating fitness, as long as this is done consistently over iterations.
+			\item Modules should aim to have a linear fitness $\to$ value distribution.
+		\end{enumerate}
+		\item The final fitness value must lie between 0 and $2^{31} - 1$.
+	\end{enumerate}
+	\item Fitness modules should exist to evaluate:
+		\begin{enumerate}
+			\item Whether notes are in the correct key or scale for the current chord
+			\item Melodic expectancy
+			\item Rhythmic consistency (closeness of adjacent durations, notes on certain beat positions)
+			\item Melodic contour (closeness of adjacent notes)
+			\item Pitch range of notes (too high, or too low)
+			\item Note repetition within a phrase
+		\end{enumerate}
+		Other modules may be created and evaluated later in the development process.
+	\item For each chord, there should exist a facility to list one or more reasonable scale(s) to play over the chord, and to specify whether or not a given pitch is in this scale.
+	\begin{enumerate}
+		\item Dominant seventh, major seventh, minor, flat five, augmented, diminished and major chords should be supported, with a variety of common adjustments such as $\sharp11$ or $\flat9$.
+		\item Arbitrary chord extensions, augmented or diminished notes may be supported.
+		\item For each chord, at least one appropriate scale must be supported. For example, C7$\flat$9 can be improvised with the H-W diminished scale.
+	\end{enumerate}
+	\item Selection of the population should be performed via tournament selection with a configurable tournament size. Other methods may be implemented.
+	\item Crossover of parents should occur via single-point crossover. Double-point, uniform or other methods may also be implemented.
+	\item Mutation of children should occur via the application of a random mutation method.
+	\begin{enumerate}
+		\item The following methods must be implemented: change of one random note's pitch; transposition of entire phrase by a random amount.
+		\item The following methods should be implemented: sorting pitches ascending/descending; adding or removing rests from phrase.
+		\item Other methods may be implemented, such as reversing or rotating pitches/the entire phrase.
+	\end{enumerate}
+	\item The genetic algorithm must be executed until a user-specified number of iterations has elapsed. The fittest member of the population must then be added to the output.
+\end{enumerate}
+
+\subsection{Post-pass stage}
+
+\begin{enumerate}[resume]
+	\item The post-pass stage should be applied to the entire output after it has been generated.
+	\item All notes should be offset by a small, random amount.
+	\item All notes should be given a normally distributed velocity with a very small standard deviation.
+	\item Large gaps between notes, if present, should be filled by extending the duration of the earliest note. More complicated rules for extending durations may be implemented.
+	\item Velocity and tempo (rubato) curves may be applied to specific parts of the output.
+\end{enumerate}
+
+\subsection{Accompaniment}
+
+\begin{enumerate}[resume]
+	\item The walking bass line should be constructed via a random walk algorithm.
+	\begin{enumerate}
+		\item The bass should echo the root note of a chord whenever one is played.
+		\item At all other times, the bass should walk over notes in the current chord, only an octave lower, playing 8\th\ notes.
+	\end{enumerate}
+	\item The percussion should be a static drum loop. It may be reactive to rhythmic or dynamic changes in the solo.
+	\item Chords should be played with a suitable inversion and octave in order to minimise the distance between the notes of adjacent chords.
+\end{enumerate}
+
+\subsection{User interface and interaction}
+
+\begin{enumerate}[resume]
+	\item The system must be manipulated via a graphical user interface.
+	\item Input must be provided via the user interface.
+	\begin{enumerate}
+		\item The chord progression should be input via a human-friendly format and parsed into the appropriate data structure.
+		\item Parsing errors in the chord progression should be detected and displayed.
+		\item The interface may provide an option to repeat the given chord progression a specified number of times.
+		\item The interface may provide a facility for modifying the tempo and meter of the output.
+	\end{enumerate}
+	\item The following output commands should be accessible:
+	\begin{enumerate}
+		\item Generate the improvisation.
+		\item Play the improvisation over a suitable MIDI device.
+		\item Save the piece in SMF format.
+		\item Convert the piece to Lilypond notation.
+	\end{enumerate}
+	\item The user will also be able to modify genetic algorithm parameters before generation.
+	\begin{description}
+		\item[General options] The general parameters such as population size, maximum iterations, chance of mutation etc. must be editable by the user.
+		\item[Fitness function] The fitness function is composed of several \emph{modules}.
+		\begin{enumerate}
+			\item The user must be able to enable or disable modules.
+			\item The user should be able to adjust the relative importance of each module in determining overall fitness.
+			\item The interface should support options specific to each module.
+		\end{enumerate}
+		\item[Mutation] The user should be able to enable or disable mutation methods. The user may be able to modify settings specific to each method.
+		\item[Initialisation] The user should be able to select from several initialisation methods, and may be able to set method-specific options.
+		\item[Crossover] The user should be able to select from several crossover methods.
+		\item[Selection] Tournament selection will be the default selection method, with a modifiable pool size. Other methods may be available as options.
+	\end{description}
+	\item All user-specified options should be saved to a file when the program is closed, and automatically restored on startup.
+	\item There may be a facility to save and load options via arbitrary files.
+	\item All components should have sensible default values.
+	\item No interface is required for the accompaniment due to its simplicity and relative unimportance.
+\end{enumerate}

@@ -1,0 +1,587 @@
+\chapter{Literature Survey}
+\label{lit-survey}
+
+\qq{Never play anything the same way twice.}{Louis Armstrong}
+
+\section{Overview}
+
+Algorithmic composition is an active research topic with a large degree of 
+interaction with psychology, engineering and computing. To this end, this 
+report focuses not only on the methodology of music generation (stochastic 
+models, genetic algorithms, etc.) but also on the psychology of music. To 
+quote \cite{papadopoulos99}, ``the big disadvantage of most, if 
+not all, the computational models is that the music they produce is meaningless: 
+the computers do not have feelings, moods or intentions, they do 
+not try to describe something with their music as humans do.''
+ 
+Another area of background reading focuses on the importance of rhythm 
+and form in composition, which directly contrasts with the importance 
+most current research places on pitch choice. More specifically, Narmour's 
+\emph{Implication-Realization model} is explored, which posits that only general 
+relations between pitches (small vs. large intervals) are important when 
+determining a song's emotional affect. 
+
+\section{Melody generation}
+
+The process of computationally generating music is an open problem with a 
+large range of methods in use; \cite{papadopoulos99} outline the 
+six most common composition approaches: mathematical models; knowledge 
+based systems; grammars; evolutionary methods; systems which learn; and 
+hybrid systems.
+
+\subsection{Mathematical models}
+
+Mathematical models are commonly used to create non-deterministic compositions 
+from random events; the compiler exerts control over the process 
+by weighting the probabilities of these events, and deciding how to map the 
+model's output to something musically meaningful. 
+
+\subsubsection{Markov chains}
+
+Any note in a given piece of music can be predicted from the notes before 
+it; this is the concept of a Markov model. Based on a human-specified or 
+empirically discovered set of probabilities, one or more previous notes (the 
+number corresponding to the \emph{order} of the model) are used as input for the Markov 
+model, and a set of probabilities for the following note are returned. The 
+generator simply selects one based on a weighted random number. 
+
+Markov models can be easily trained from a body of music, are simple 
+to implement and efficiently accessed if used with the right data structures. 
+Unfortunately, attempts to use a trained model on new input usually fails 
+because the model is over-specified \citep{conklin03}. One solution is to 
+perform transformations on the training data, such as transposing it into a 
+common key. 
+
+Due to their tendency to produce wandering and occasionally repeating 
+sequences, Markov chains are useful for chord progression and rhythm generation, 
+but are no longer often used for solos unless combined with other 
+techniques. For example, the \emph{JiG: Jazz Improvisation Generator} \citep{grachten01} uses a Markov model with additional constraints on tension and pitch contour over time. Sequences are generated in a base key then transposed to a more appropriate key based on the underlying chord. To further 
+enhance the model, pre-stored ``licks'', or short phrases of music, are dynamically 
+included within the output in an attempt to mimic a jazz player's 
+usage of premeditated phrases within an improvisation. This technique is 
+also used in commercial implementations, such as ``Band in a Box'' \citep{keller07}. 
+
+One complaint about such models are that they are inherently uncontrollable, 
+that is, it is difficult to map changes in the model to changes in 
+the output. \cite{koenig70} developed ``tendency masks'' to allow the user 
+parametric control, while \cite{jones81} dismissed the complaint outright: 
+``This is a needless concern, since stochastic generative schemes may produce 
+results that sound far more ordered than what might be produced by 
+a supposedly deterministic system.'' Regardless, such models are unable to 
+explicitly capture higher-level aspects of music as they are based entirely on 
+short-term context. 
+
+\subsubsection{1/f noise}
+
+1/f noise \citep{bak87} or ``pink noise'' is a ubiquitous frequency distribution 
+found in systems ranging from the flow in the river Nile to the 
+luminosity of the stars. \cite{voss78} performed analysis of several 
+works of music, from Bach concertos to the piano rags of Scott Joplin; 
+in all cases, the spectral density below 1 kHz matched the 1/f distribution. 
+
+Utilising this property, stochastic music was constructed with the 1/f 
+distribution (rather than a true random distribution, or ``white noise'') as 
+the source. Compared with both random and $1/f^2$ (``Brownian noise'') generation, 
+listeners thought the 1/f music to be far more interesting, and a 
+degree of long term structure was imposed that was lacking from the other distributions.
+The authors postulate that the 1/f shape could also be used 
+to control other parameters of the sound rather than pitch, with similarly 
+pleasing results. 
+
+Rather than being the final output, 1/f noise could be used as an initial seed to
+a genetic algorithm instead of a uniformly random distribution of pitches. This may
+result in an improvisation that can reach an aesthetically pleasing state more quickly.
+
+\subsubsection{Chaotic systems}
+
+Chaotic systems are constructed by taking an initial value and applying a function to it, then applying the function to its previous output. Repeated iterations, or ``orbits'', yields an unpredictable and interesting series of values that can (depending on the initialisation vector and function used) form quasi-repeating, self-similar patterns that mimic human composition. This approach has been used to great effect by \cite{leach95}.
+
+\cite{bidlack92} conducted experiments with chaotic systems, mapping their outputs to the pitch, velocity and duration of notes. While the regular patterns of the output lent themselves to bass line generation, \citeauthor{bidlack92} cautioned against several potential problems:
+
+\begin{itemize}
+	\item Some initial values for a given map may cause it to become \emph{unbounded}; the system will eventually tail off to infinity.
+	\item The level of precision when calculating such functions is extremely important, as small rounding errors can create large variations in the output.
+	\item Due to this, different processors are likely to give different results.
+\end{itemize}
+
+Use of cross-platform arbitrary-precision arithmetic libraries (such as the \emph{GNU Multiple Precision Arithmetic Library}\footnote{\url{http://gmplib.org/}}) solves the latter two problems. The first can be solved by experimenting and limiting the range of possible inputs, or fixing it entirely in the case of \cite{morris05}. Like 1/f noise, the output of a chaotic function alone is not sufficient to pass as a genuine jazz improvisation. It may, however, be useful to have chaotic functions such as the \emph{Standard Map} available as an initial input to a genetic algorithm.
+
+\subsubsection{Other mathematics}
+
+\cite{xenakis71} covers many approaches in his book \emph{Formalized Music}, including the use of group theory in the piece \emph{Nomos Alpha}: permutations of 
+the twenty-four isometries of the cube are selected and composited in a ``Fibonacci 
+motion''. Ultimately these techniques are mathematically and musically 
+interesting, but of limited use when attempting to model an evolved 
+and complex style of music. 
+
+\subsection{Knowledge-based systems}
+
+If one can isolate the aesthetic code of a musical genre, this code can be 
+used to create new similar compositions. This is the aim of knowledge-based 
+systems: a series of rules, tests and constraints are defined, and the 
+musical output must conform to these constraints. A core advantage of this 
+approach is that knowledge-based systems are capable of explaining their 
+choice of actions. 
+
+Unfortunately, this method require a tremendous amount of care and attention 
+before yielding satisfying output. \cite{loy91} examines an attempt 
+by \cite{schottstaedt84} to implement a rule-based expert system for composing 
+counterpoint, and its pitfalls: firstly, several of the rules 
+\citep[derived from][]{fux} had ambiguities, or were incomplete. Others needed fine-tuning 
+of weights and constraints until the designer had roughly doubled the number 
+of rules in the system. Even with these amendments, the system was 
+only as good as ``a typical freshmen composition student'' (according to 
+Loy).
+
+While knowledge-based systems are competent at formalizing some aspects 
+of the compositional process, these aspects are ``the most elemental and 
+well-known of Western musical styles''; rule-based systems ``do not handle 
+ambiguity gracefully, and are difficult to operate meaningfully in parallel.'' 
+Ambiguity is very common in most forms of music, due in part to its inherent 
+parallelism (e.g.\ between melodic, harmonic, rhythmic and timbral 
+dimensions). Furthermore, expectancy violation is necessary to keep the listener
+engaged. \cite{meyer56} initially developed the theory that music is 
+organised by the interweaving of expectation and surprise –-- Baroque music, 
+for example, is designed around keeping the listener ``off balance, and hence 
+mentally engaged in the unfolding composition.'' 
+
+\subsection{Grammars}
+
+Compositions can also be created by constructing a musical grammar, viewing 
+music itself as a language with a distinctive grammar set. \cite{steedman84} produced a generative grammar for chord progressions in
+jazz twelve-bar blues, while \cite{johnsonlaird91} also used grammars for the generation 
+of jazz chord progressions and bass line improvisations. 
+
+For melody, grammars tend to be too restrictive and would involve a 
+large number of rules, which is why most research focuses on other methods 
+of melody generation. Structurally, grammars are hierarchical while improvised 
+music is not, and this leads to unclear semantics and ambiguity \citep{roads79}. ``Even the simple phenomenon of a repeated phrase 
+in a piece cannot adequately be expressed using a context-free grammar'' 
+\citep{conklin03}.
+
+\subsection{Evolutionary methods}
+
+Genetic algorithms (GAs) have proved to be very efficient at dealing with 
+large search spaces, and one such space is that of music composition: pitch, 
+amplitude (loudness), timbre and duration can all be modified within a terrifyingly large range. They are also capable of providing multiple solutions, 
+which is often required in creative domains.
+
+\subsubsection{GenJam}
+
+\cite{biles94} used such algorithms to model a novice jazz musician learning to improvise; his program, 
+GenJam, outputs solos over a rhythm section accompaniment and reacts to real-time feedback from a human ``mentor''. 
+
+The generation process concerns strings of ``symbols'', representing tuples 
+of pitch, amplitude and duration. Defining measures as individuals, the GenJam algorithm first initialises a population from random notes and combines groups of four into families. The two with the highest fitness are marked as parents, and their offspring replace the weaker two. Children are calculated simply by crossing over random notes (bits) from each parent, and occasionally subjecting a child to mutation (inverting notes, sorting notes in ascending pitch order, etc.) in order to ``accelerate learning'' and ensure ``not just new, but better offspring''.
+
+GenJam's large search space is reduced by making all notes have a fixed duration, choosing a pre-set scale for each chord in the progression, and dealing with only fourteen pitches at once. Additionally, a human is responsible for choosing the fitness of each measure: while the music is playing, 
+the mentor types `g' or `b' to indicate good or bad music respectively. This 
+feedback is used to determine the best parts of the generation, so they can 
+be propagated to future output. 
+
+There are several issues with this approach. Using a human as a fitness 
+function requires him or her to listen to every single program output, and 
+worse still, the mentor could be affected by subjective bias, particularly 
+after hearing a large amount of the output. Mentors can get ``used'' to 
+the computer-generated, often unnatural sound of a genetic algorithm, and 
+favour aspects of the music that an outsider would hesitate to recommend. 
+
+\subsubsection{Other approaches}
+
+GAs had previously been used to create thematic bridging between two 
+simple melodies \citep{horner91} and to generate four part 
+Baroque harmonies from an input melody \citep{mcintyre94}. Rather than 
+relying on a human overseer, these methods utilise an objective fitness function.
+
+\cite{gibson91}'s method was designed to produce music in the style of traditional hymns; generation was restricted to C major and three-chord harmonies. \cite{marques00} developed a more complicated system including eight octaves of notes, pauses, chords and multiple instruments; only simple rules are used in the fitness function:
+
+\begin{itemize}
+\item \textbf{Harmony:} evaluates intervals between notes played simultaneously
+\item \textbf{Tone:} evaluates suitability of note for chosen tone and scale
+\item \textbf{Melody:} evaluates intervals between consecutive notes
+\end{itemize}
+
+According to the authors, the output is of acceptable quality, which is promising given the vastly extended search space and relative simplicity of the fitness evaluation.
+
+\subsubsection{Interaction with neural networks}
+
+Unlike neural networks, genetic algorithms do not explicitly deal with the higher-level structure of music. \cite{biles96} attempted to integrate an artificial neural network (ANN) as a judge for GenJam's improvisations, but were unsuccessful:
+
+\qq{Upon
+examining the data, we found numerous situations where two measures were nearly identical in their chromosomes, but had maximally opposite fitnesses.}{\citealp{biles96}}
+
+Biles recommends the use of ``knowledge intensive artificial intelligence techniques'' in evaluating fitness, and specifically higher-level form, because ``humans listen to music in complex and subtle ways that are not captured well by simple statistical models''. Instead of neural networks, a more complex algorithm could handle higher-level structure, and use these computations to guide the fitness function of note generation such that it follows this structure.
+
+For example, \cite{gibson91}'s genetic algorithm determined melody quality by looking at both intervals between pitches, and the overall structure. This idea of examining the output from multiple viewpoints is something a genetic algorithm's fitness function can do very well, and might ``more closely simulate human musical thinking'' \citep{papadopoulos99}. Other systems that use this approach include \citep{ebcioglu88, conklin95}.
+
+\subsubsection{Criticisms}
+
+GAs in general still draw criticism as ``their operation in no way simulates human behaviour'' \citep{wiggins98}. Yet \cite{cohen02} describes creativity as ``not a random walk in a space of interesting possibilities, but \ldots directed''. Genetic algorithms offer this to a fault: they provide a \emph{search} process that has \emph{direction} via the fitness function. They are known to be extremely effective at dealing with large search spaces \citep{holland75,goldberg89} and the mutation of GAs removes the limitations of over-specified heuristics or hill-climbing algorithms.
+
+The notion of continual improvement via mutation and crossover is intuitively resonant with the idea of creativity; very rarely does a perfect solution immediately fall into the artist's lap without further refinement. \cite{jacob96} introduces two distinct modes of composition: \emph{inspiration} and \emph{hard work}. The former is more ``inspired'' but ``we do not fully understand it and therefore have a slim chance of reproducing it''. The latter ``resembles an iterative algorithm'' and yields some similarities to the operation of a genetic algorithm.
+
+\subsection{Systems which learn}
+
+Learning systems extract information from musical material supplied by 
+users or the system's creator, and process this information into a piece of 
+music similar to the examples provided. Such systems do not require any 
+inherent knowledge of the genre of music they are working with. However, 
+such Artificial Neural Networks (ANNs) tend to be used to solve ``toy'' problems, 
+with simplified domains, compared with knowledge-based approaches 
+\citep{toiviainen00}. ANNs can be useful for analysing music which cannot be 
+expressed symbolically, but for jazz, we lose a great deal by dealing only in 
+aggregated statistics and ignoring the context within which notes are placed. 
+
+\subsection{Hybrid methods}
+
+Generally, approaches that utilise only one of the above methods produce 
+poor results compared to using a combination of AI techniques. \cite{gutknecht92}
+suggests a ``post-modern'' attitude of combining AI methods to cover 
+for each others' weaknesses and capitalise on their strengths. One area 
+of current research is the use of genetic algorithms with ANNs as a cooperating 
+fitness function \citep{gibson91,spector95}. These techniques have met with mixed results; Spector warns that ``genetic programming will often find and exploit bizarre niches produced by weaknesses in fitness functions''. \cite{papadopoulos99} point out that hybrid systems are complicated to implement and time-consuming to verify and validate.
+
+\section{Chord progressions}
+
+Integral to most forms of jazz improvisation is a harmonising sequence of 
+chords played simultaneously with the melody. This is known as the chord 
+progression of the song, or in jazz terminology, the ``changes''. \cite{tirro74}
+describes the progression as a ``chordal framework\ldots{}derived from a standard 
+repertoire of changes derived from popular songs, blues riffs, and a few jazz 
+originals.'' While this interpretation clearly encourages a knowledge-based 
+approach, others such as \cite{steedman84} and \cite{johnsonlaird91} have 
+used formal grammars for chord progression and bass line generation. 
+
+At this point it is worth noting that the chord progression could be 
+generated purely from the melody itself (choosing whatever chords fit the 
+melody best), but it is simpler to generate the harmonic framework first. 
+This allows a consistent, flowing harmony; if the melody was allowed to 
+``run free'', the generated chords might jump about or clash together. Once 
+the progression is set, there are more constraints on the melody, which makes 
+that aspect of generation easier as well. 
+
+Steedman's influential grammar takes the form of recursive ``rewrite 
+rules.'' A common twelve-bar blues progression is provided as input: 
+
+\begin{center}
+\begin{tabular}{|c|c|c|c|}
+\hline
+I & I & I & I \\ \hline
+IV & IV & I & I \\ \hline
+V & V & I & I \\ \hline
+\end{tabular}
+\end{center}
+
+A set of six core rules operate on this input to generate any well-formed 
+twelve-bar jazz progression. The most important transformations are converting 
+chords to their dominant or subdominant forms, addition of chromatic 
+passing chords, and alterations such as minor sevenths or altered 
+forms. 
+
+Steedman obtained the basis of this grammar from a list of jazz chord 
+progressions by \cite{coker64}; this set is seen as a wide and representative 
+range of permissive variations of the blues basic form. The process effectively 
+captures the human process of improvisation, by performing substitutions on 
+a simple chord progression until it is harmonically interesting. The grammar 
+is capable of generating all of the sequences in Coker's study, and can also 
+handle 24-bar form ``rhythm changes'', as heard in Gerschwin's ``I've Got 
+Rhythm''. 
+
+However, the grammar only operates over one twelve-bar block at a time; 
+it is not reactive to user input, and operating over a smaller portion of the 
+progression would harshly the limit the range of sequences generated by 
+the grammar. For example, the number of rules to apply could be a user-specified 
+setting (corresponding to how ``complex'' the progression becomes). 
+If this setting is changed, they will only take effect on the \emph{next} generation 
+of a twelve-bar sequence, constituting a fairly serious feedback delay. In 
+response to this, \cite{chemillier04} proposes a real-time adaptation of the 
+grammar, first attempting to precompile all possible chord sequences (which 
+is untenable for sequences of a large size), then limiting this precompilation 
+to a select set of ``cadential sequences''; progressions leading to a final dominant seventh chord are interrupted and extended with more chords `on the 
+fly'. 
+
+It should be noted that Chemillier's generation is somewhat simplified. 
+His system ignores diminished seventh chords and the substitution of a 
+rhythmically \emph{un}stressed chord with its subdominant, addressed by rules 
+2 and 6 respectively. Rule 5 is also ignored, but this is justified because 
+its application could only be found once in the set of sequences taken from 
+Coker. 
+
+Steedman himself also addresses weaknesses with the system \citeyearpar{steedman96}, in 
+particular its ``minute coverage'', the difficulty of writing a parser (although 
+the context-sensitive grammar can be converted to an almost equivalent 
+context-free approach) and the parser's large search space in certain conditions. 
+It is assumed that these criticisms only relate to the parsing applications 
+of the grammar. Steedman later investigated Longuet-Higgins' \emph{Theory 
+of Tonal Harmony}, but there do not seem to be any immediate generative 
+properties to derive from this work. 
+
+In practice, the author believes the user would be more likely to specify a
+chord progression than to have one generated randomly; evidence can be seen in
+virtually every paper on music composition, which generally chooses to use a set
+chord progression or drop the concept entirely. Given this observation, Steedman's
+admission, and the desire to constrain the project's scope to a reasonable size, 
+the system will only accept a user-specified progression.
+
+\section{The psychology of music}
+
+One ever-present field of psychology is the investigation of music: rhythm, 
+pitch, structure, and the various mental effects that they produce. This 
+research can be invaluable to an algorithmic generator when shaping the 
+output to sound genuine and interesting, rather than robotic and meandering. 
+
+\subsection{Early studies}
+
+The earliest study of emotional reactions to music was conducted by \cite{hevner36}. Listeners of varying musical backgrounds were asked to check boxes 
+alongside adjectives describing the music they were hearing; these adjectives 
+were grouped as synonyms of eight base descriptors, and the results 
+aggregated. Presenting the listeners with a large number of adjectives, and 
+allowing them to choose as many as desired, reduces the cognitive load of 
+choosing the most fitting word. 
+
+The study was one of the first to show that untrained listeners gain as 
+much emotional value from music as trained musicians. With the development 
+of modern genres such as noise, free jazz and atonal music, this seems 
+to be a dubious conclusion at best. One example is the piano works of Art 
+Tatum: they are often dismissed by novice pianists, but more advanced musicians 
+have been intimidated by the technical difficulty of his embellishments 
+and the progressive nature of his harmonisations. 
+
+\fig{hevner.png}{Listener response to changes of pitch and tempo \citep{hevner37}}
+
+By design, the study only examines factors like contour, major vs. minor 
+mode, firm vs. flowing rhythm, consonance etc. Each piece played is 
+assigned a score in each of these categories and this weighting is used to 
+determine which adjectives are linked to each musical factor. It is evident, 
+then, that there are factors \emph{not} covered by the study that are also influencing 
+the listeners' adjective choices, making the study unreliable. 
+
+Nevertheless, it is a good base for research in the area of ``music with 
+intent''. A second study by \cite{hevner37} corrects this flaw by having each 
+piece played twice, identical save for one key difference in pitch (transposition) 
+or tempo. Tempo was found to be of critical importance in carrying 
+the expressiveness of music, with fast tempi inciting feelings of grace, vigour, 
+happiness and excitement; while slower tempi produced effects of sadness, 
+serenity and in rare cases, dignity. 
+
+Aside from tempo, the studies combined show modality to be the most 
+important aspect of music, with major modes naturally leading to happier 
+(or angrier) emotion. Other aspects have a less concrete effect, particularly 
+with the small sample size of forty musicians that Hevner employed.
+
+\subsection{Schenkerian analysis}
+
+In general, music theory focuses on aspects of pitch rather than rhythm or 
+form. This can be seen in modern atonal theory and, more notably, Schenkerian 
+analysis, a large focus of research into tonal structures. For example, Schenkerian theory regards \emph{every} piece of tonal music to be an embellishment 
+of the I-V chord progression, and that the direction of a piece can be 
+found by analysing long-range linear pitch motions embedded within. However, 
+pitch is considered by many composers to be a ``subordinate aspect of 
+music'':
+
+\qq{One can write interesting music in a purely percussive idiom. 
+One cannot write interesting music without rhythm or 
+form. Music without rhythm and form would be ametrical at 
+all levels, with change occurring randomly at random times. It 
+would be pointless, wandering, and ultimately boring.}{Frederick W. Umminger}
+
+There is an abundance of research that finds fault with Schenkerian theory and other 
+pitch-focused cognitive models. Serialism is based on structures of pitch relation 
+which experiments have repeatedly shown to be ``cognitively opaque'' 
+\citep{millar84,lerdahl96}; they are inconsequential to 
+the music's cognitive effect. The linear pitch motions of Schenkerian theory 
+have been experimentally shown not to create a sense of implication \citep{schellenberg97}: given a partial linear pitch motion, the listener expects a repetition of the final tone, not a continuation of the motion. 
+
+\section{The Implication-Realization model}
+
+Eugene \citeauthor{narmour90} was another opponent of the theory, releasing a criticism 
+of Schenker's work and introducing his alternative model \citeyearpar{narmour77}. Thirteen 
+years later, he published the Implication-Realization model (1990, 1992), 
+based on \cite{meyer56}'s work on expectation and Gestalt psychology. Rather 
+than focusing on tonality, this model shows how implications set up expectations 
+for certain realizations to follow. 
+
+Implications can be used to develop music with intent that induces feeling. 
+Meyer proposes that emotion is aroused ``when an expectation --- a tendency 
+to respond \ldots{}is temporarily or permanently blocked.'' Expectations 
+are developed ``in connection with particular musical styles and of the modes 
+of human perception, cognition, and response.'' The outcome of this is that 
+emotion and affect are heightened when a listener's musical expectations are 
+unfulfilled; this is an important finding, such that ``almost all contemporary 
+music theoretic analyses have adopted implicit or explicit ideas of expectation'' 
+\cite{schmuckler89}. Implications can also be used to measure melodic 
+similarity \citep{grachten04,grachten05}.
+
+\subsection{The model in brief}
+
+\citeauthor{narmour92} begins with two general hypotheses: 
+
+\begin{itemize}
+	\item $A + A \to A$
+	\item $A + B \to C$
+\end{itemize}
+
+\ldots{}where A, B and C are either intervals or pitches. These simple rules 
+indicate that a) hearing two similar items yields an expectation of a repetition 
+of that item, and b) hearing two different items yields an expectation 
+of change. The model then gets more detailed; what follows is a summary 
+of its core tenets. 
+
+\fig{expectancy.png}{Examples of principle fulfilment and denial for small and large intervals \citep{thompson97}}
+
+\begin{enumerate}
+	\item \textbf{Registral direction}
+	\begin{itemize}
+		\item Small intervals imply continuation of pitch direction.
+		\item Large intervals imply a change of direction.
+	\end{itemize}
+	In the original model, ``large'' intervals are deemed to be seven semitones 
+or larger.
+
+	\item \textbf{Intervallic difference}
+	
+	\begin{itemize}
+		\item Small intervals imply similar-sized intervals. \begin{itemize}
+			\item If the registral direction changes, ``small'' is defined as the 
+original interval $\pm$ 2 semitones. 
+			\item If there is no change, it is $\pm$ 3 semitones. 
+		\end{itemize}
+		\item Large implicative intervals imply relatively smaller intervals. 
+	\end{itemize}
+	
+	\item \textbf{Registral return}
+	
+	This is the melodic archetype \textbf{aba} or $\textbf{aba}^\prime$ where the last tone is very similar to the original pitch ($\pm$ 2 semitones), for example A--E–-B$\flat$. Listeners recognise and expect this archetype to occur. 
+	
+	\item \textbf{Proximity}
+	
+	Small intervals have stronger implications and are themselves more implied 
+than larger intervals, consistent with the cross-culture prevalence 
+of small intervals in music \citep{dowling86}.
+
+	\item \textbf{Closure}
+	
+	Closures define how a listener segments a melody based on pitch direction 
+and interval size. This occurs in two cases: 
+
+	\begin{itemize}
+		\item Pitch contour direction is reversed.
+		\item A large interval is followed by a smaller interval.
+	\end{itemize}
+	
+	Stronger closures involve both cases occurring simultaneously. In addition, 
+a general sense of closure can be found with any two successive 
+tones where: 
+
+	\begin{itemize}
+		\item the second tone is longer than the first;
+		\item the second tone occurs on a stronger beat than the first;
+		\item the second tone is more stable in the established key or mode than the first.
+	\end{itemize}
+\end{enumerate}
+
+\subsection{Justification}
+
+As \cite{krumhansl95} points out, music-theoretic concepts are seldom subjected 
+to empirical tests; theorists are rarely interested in making their 
+concepts empirically testable. The I-R model, however, clearly states its 
+principles allowing several researchers to perform studies to validate Narmour's 
+theory \citep{cuddy95,schellenberg96,thompson97}. Most support his findings --– even across cultural boundaries and classes of musical experience –-- indicating an innate ``genetic code'' for musical expectancy: 
+
+\qq{The principles \dots{}are presumed to arise from general psychological 
+processes. As a result, they would operate independently 
+of the musical style of a melody and the musical experience of 
+a listener \dots{}overall, the model was remarkably consistent in its 
+ability to predict response patterns.}{\citealp{schellenberg96}}
+
+\cite{krumhansl95} also verified the model for British folk, atonal and 
+Chinese folk music. Conversely, two later cross-cultural studies \citep{krumhansl99,krumhansl00} found that musical cultures shaped the listeners' common principles of expectation in unique ways, so there is no definite consensus. 
+
+Schellenberg also shows the model to be over-specified; a revised, simplified version was equally successful at predicting responses among listeners 
+and music styles. In particular, the principle of intervallic difference always 
+implies a small interval, and so has correlation with the principle of proximity. 
+The principle of closure has similar conceptual redundancy, and so the 
+revised model omits two of these principles and modifies the others to reduce 
+explanatory overlap.
+
+I-R is particularly suited for algorithmic composition; its metrics can be easily codified as rules and constraints, and do not require
+complex analysis of the musical phrase. In his paper, Schellenberg grades each implication type with a score between 1 to 6, with appropriate
+scaling based on factors such as interval size. These scores could be useful in algorithmically determining the expectancy of a piece; the 
+system could target a specific expectancy score, such as 75\%, to ensure that the piece becomes neither too predictable nor too disjoint.
+It may be useful to implement both the original model and Schellenberg's revised model to see if there are any significant differences in
+the output. 
+
+\section{Non-pitch aspects of music}
+
+\subsection{Rhythm}
+
+Rhythm and meter are such important aspects of jazz music (swing, syncopation, 
+odd time signatures) that ignoring them is not an option for any 
+serious improvisation system. 
+
+Even if no specific rhythm is set, the mind tends to impose patterns on 
+even random series of stimuli \citep{cohen57} and songs with fixed durations 
+between notes will have a weak rhythm automatically imposed upon them 
+\citep{cooper60}. While this is comforting, the problem of rhythm 
+ultimately comes down to choosing which notes are accented and which are 
+not. Cooper claims accented notes must be ``similar'' to other notes around it in order to create the accent effect, but that there is no correlation between accent and volume or duration. Often accents are played at fixed and stable points in a series of notes; unaccented beats are often slightly displaced when rubato is applied.
+
+Tempo variations can be tricky to implement correctly: \cite{desain93} warn that simply speeding up or slowing down the same sequence 
+of notes will not work. For example, grace notes are more pronounced at 
+slower speeds, while staccato notes would have their duration extended. 
+These changes tend not to be linear but more related to the metrical and 
+rhythmical structure of the piece \citep{clarke88,palmer89}. Other devices, 
+such as broken chords, may or may not change speed to match the 
+global tempo.
+
+As far as jazz is concerned, swing rhythm is essential for most styles 
+(except for very fast songs or ballads). In general, for each pair of notes the 
+duration of the first is augmented while the second is diminished. The exact 
+ratio of durations is often written as 2:1 or 3:1 but in practice depends on 
+how ``hard'' the song is swung, and will be a subject of experimentation. 
+Bass players often play ``straight'' (unswung) eighth notes a little ahead of 
+the beat to keep things ``moving forward'' \citep{sabatella95}; soloists often 
+play ahead, or play behind the beat for a more relaxed feel. In general, jazz 
+gives the composer many opportunities to shift notes around the beat for 
+different effects, and the system could account for this.
+
+\subsection{Form}
+
+Almost all modern music analyses share one thing in common: they see 
+music as hierarchical. To quote \cite{schenker69}: ``both pitch and rhythm 
+structures are represented in a series of levels, between which relationships 
+of reduction and elaboration operate.'' \citeauthor{lerdahl01}'s \citeyearpar{lerdahl01} tonal-pitch-space model proposes that tension is a combination of melody dissonance and the position of each musical event in a tree structure; phrases closer to the root of the tree create less tension. 
+
+One interesting study by \cite{gotlieb85} split Bach's \emph{Goldberg 
+Variations} into pieces and played them in a random order in addition 
+to their original order. Listeners, some of whom were musically trained, did 
+not prefer the original order –-- a preference for the original order appeared 
+in only 1 of 15 scales. Another study by \cite{cook87} examined the effect of a piece beginning and ending on the same key; music students most often 
+preferred the version that ended on a different key, unless the piece was very short. This implies that the effect of \emph{tonal closure} is restricted to fairly short durations, outside of which attempting to end on the same key as you began is a fruitless task. 
+
+\section{Conclusion}
+
+To progress the field of algorithmic improvisation, factors such as musical tension, intent,
+expectation and melodic closure should be
+explicitly referred to and evaluated. Formalizations for these factors are already in place: 
+Lerdahl's tonal-pitch-space model, psychology research, and Narmour's I-R 
+model. Additionally, systems which only utilise only one generational approach do not seem 
+to be very effective. If possible, multiple approaches should be combined. 
+
+\subsection{Form}
+
+Form is an important subject in the field of algorithmic composition, but there is little information on how to generate or enforce a high-level musical structure. From studies such as those by \cite{gotlieb85} and \cite{cook87}, na\"{\i}ve attempts at determining high-level form have been unsuccessful, or even counter-productive. Improvisations are generally short and devoid of any particularly strong structure, although musicians will of course think ahead by a few notes or a few bars. Given this situation, and the inability of genetic algorithms to explicitly account for form, the system will place a low priority on giving a high-level form to the output.
+
+\subsection{Choice of algorithm}
+
+The most critical decision is the choice of algorithm. In general, chaotic functions, 1/f noise and stochastic methods are too simple for an attempt at generating music that sounds genuinely human. There are simply too many factors going into an improvisation to be sufficiently represented by a random function or a probability matrix. Their support for higher-level form is worse than that of genetic algorithms, and they contain no human knowledge whatsoever. From \cite{biles96} it can be seen that two musical objects can share the same statistical data, but have a drastically different effect on the listener, or vice versa; it depends entirely on the metrics chosen. Markov models and other related methods only compound this problem by discarding context (save for one or two previous notes) and averaging statistics across a large number of inputs.
+
+Genetic algorithms (GAs) have been shown to be successful by \cite{horner91,papadopoulos98,marques00} and others, even with eight-octave search spaces and simple fitness evaluation. The fitness function itself allows musical phrases to be checked according to arbitrary criteria: rules, constraints, even a human opinion. Unfortunately, efficiency \citep[see][]{biles94} and subjectivity \citep{ralley95} make using a subjective fitness function difficult; additionally, any musical composition knowledge would be stored in the user's mind rather than in the system itself, which makes it less useful for future development.
+
+Thankfully objective functions are practical, and from an administrative perspective offer an open-ended goal: the function can be built up with more complexity until there is no time available. The disadvantage is the scope of possibilities when creating such a function, and the experimentation it requires. Whatever the fitness function, the general framework of GAs has been shown to resemble human creativity, or as \cite{goldberg02} surmises, ``Selection + Mutation = Improvement. Selection + Recombination [Crossover] = Innovation.''
+
+Markov chains and other methods are noted for their speed, and their ability to generate real-time output. GAs are rarely real-time, but by deciding not to develop a real-time system, new opportunities are made available: the search space can be made to cover a large range (three to five octaves) rather than decreasing it and possibly compromising output quality; the fitness function itself can be involved and computationally expensive; the genetic algorithm itself can be run for thousands of iterations in the hope of generating a better improvisation. In this light, real-time output does not seem useful enough to justify the concessions that would need to be made.
+
+\subsection{Other methods}
+
+GAs require a suitable initial population of candidates. Traditionally, random data is used; the population is shaped and improvised by the algorithm over thousands of iterations. But there is no harm in having the initial population be musically interesting to begin with. A simple example would be using random notes from a particular scale across a particular subset of piano octaves. More interestingly, 1/f noise or chaotic systems could be used as seeds.
